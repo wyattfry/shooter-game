@@ -12,6 +12,7 @@ export default class NetworkManager {
     this.ws = null;
     this.id = null;
     this.isHost = false;
+    this.hostId = null;
     this.color = null;
     this.players = [];
     this.connected = false;
@@ -37,6 +38,24 @@ export default class NetworkManager {
       const connectUrl = name ? `${url}?name=${encodeURIComponent(name)}` : url;
       this.ws = new WebSocket(connectUrl);
 
+      // Render's free tier can take 30-50s to wake from a cold start; give it
+      // real headroom before giving up, but don't hang forever with no feedback.
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        this.ws.close();
+        reject(new Error('Connection timed out — the server may be waking up, try again in a moment'));
+      }, 60000);
+
+      const wakingHint = setTimeout(() => {
+        if (!settled) this.emit('waking-up');
+      }, 4000);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        clearTimeout(wakingHint);
+      };
+
       this.ws.onopen = () => {
         this.connected = true;
       };
@@ -54,8 +73,10 @@ export default class NetworkManager {
           this.isHost = msg.isHost;
           this.color = msg.color;
           this.players = msg.players;
+          this.hostId = msg.isHost ? msg.id : (msg.players.find(p => p.isHost)?.id ?? null);
           if (!settled) {
             settled = true;
+            cleanup();
             resolve(this);
           }
         }
@@ -67,6 +88,7 @@ export default class NetworkManager {
         this.emit('disconnected');
         if (!settled) {
           settled = true;
+          cleanup();
           reject(new Error('Failed to connect to multiplayer server'));
         }
       };
@@ -76,6 +98,7 @@ export default class NetworkManager {
         this.emit('disconnected');
         if (!settled) {
           settled = true;
+          cleanup();
           reject(new Error('Failed to connect to multiplayer server'));
         }
       };

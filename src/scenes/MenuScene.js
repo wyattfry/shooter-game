@@ -210,22 +210,27 @@ export default class MenuScene extends Phaser.Scene {
     this.mpStatusText.setText('Connecting...');
 
     const net = new NetworkManager();
+    net.on('waking-up', () => {
+      this.mpStatusText.setText('Still connecting — server may be waking up, this can take up to a minute...');
+    });
+
     net.connect(undefined, this.playerName || 'Player')
       .then(() => {
         this.mpConnecting = false;
         this.mpStatusText.setFill('#66ff88');
+        const names = net.players.map(p => p.name || 'Player').join(', ');
         this.mpStatusText.setText(
-          `Connected — ${net.players.length} player(s) in room${net.isHost ? ' (you are host)' : ''}`
+          `Connected — ${net.players.length} player(s) in room${net.isHost ? ' (you are host)' : ''}: ${names}`
         );
         this.registry.set('multiplayerNetwork', net);
         this.time.delayedCall(400, () => {
           this.scene.start('GameScene', { multiplayer: true });
         });
       })
-      .catch(() => {
+      .catch((err) => {
         this.mpConnecting = false;
         this.mpStatusText.setFill('#ff6666');
-        this.mpStatusText.setText('Connection failed — is the server running?');
+        this.mpStatusText.setText(err.message || 'Connection failed — is the server running?');
       });
   }
 

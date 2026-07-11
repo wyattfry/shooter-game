@@ -274,9 +274,23 @@ export default class GameScene extends Phaser.Scene {
         .on('pointerdown', () => this.leaveSession());
 
       this.gameOverButtons = this.add.container(400, 380).setScrollFactor(0).setVisible(false);
-      const newGameText = this.makeMenuButton(-90, 0, 'New Game', '#66ccff', () => this.requestNewGame());
-      const endSessionText = this.makeMenuButton(90, 0, 'End Session', '#ff8888', () => this.leaveSession());
+      const newGameLabel = this.isHost ? 'New Game' : 'New Game (host only)';
+      const newGameText = this.makeMenuButton(-100, 0, newGameLabel, this.isHost ? '#66ccff' : '#555577', () => this.requestNewGame());
+      const endSessionText = this.makeMenuButton(100, 0, 'End Session', '#ff8888', () => this.leaveSession());
       this.gameOverButtons.add([newGameText, endSessionText]);
+
+      this.gameOverHint = this.add.text(400, 420, '', {
+        fontSize: '14px',
+        fill: '#aaaaaa',
+        align: 'center'
+      }).setOrigin(0.5).setScrollFactor(0).setVisible(false);
+
+      this.lobbyListText = this.add.text(this.scale.width - 16, 50, '', {
+        fontSize: '13px',
+        fill: '#cccccc',
+        align: 'right'
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(1000);
+      this.refreshLobbyList();
     }
   }
 
@@ -790,10 +804,10 @@ export default class GameScene extends Phaser.Scene {
       this.player.health = Math.min(this.player.health + 1, this.player.maxHealth);
     } else if (reward === 'rapidFire') {
       this.player.rapidFireTime = 5000;
-    } else if (reward === 'saw' || reward === 'm4-upgrade' || reward === 'rocket') {
-      this.player.setWeapon(reward);
     } else if (reward === 'tankCall') {
       this.callInTank();
+    } else if (reward && Player.WEAPONS[reward]) {
+      this.player.setWeapon(reward);
     }
   }
 
@@ -852,6 +866,7 @@ export default class GameScene extends Phaser.Scene {
     this.leaveSessionText.setVisible(true);
 
     this.net.send('player-died', {});
+    this.refreshLobbyList();
 
     if (this.isHost) {
       this.deadPlayerIds.add(this.net.id);
@@ -871,9 +886,11 @@ export default class GameScene extends Phaser.Scene {
 
   updateSpectateCamera() {
     const target = this.findLivingRemotePlayer();
-    if (target && this.cameras.main._follow !== target.sprite) {
+    if (target && this.spectateCameraTarget !== target.sprite) {
+      this.spectateCameraTarget = target.sprite;
       this.cameras.main.startFollow(target.sprite, true, 0.1, 0.1);
-    } else if (!target) {
+    } else if (!target && this.spectateCameraTarget) {
+      this.spectateCameraTarget = null;
       this.cameras.main.stopFollow();
     }
   }
@@ -913,15 +930,18 @@ export default class GameScene extends Phaser.Scene {
     this.gameOverText.setText(`GAME OVER\nWave: ${wave}\nAll players down`);
     this.gameOverText.setOrigin(0.5, 0.5);
     this.gameOverButtons.setVisible(true);
+    this.gameOverHint.setVisible(false);
   }
 
   requestNewGame() {
     if (this.isHost) {
       this.net.send('new-game', {});
       this.applyNewGame();
+    } else {
+      // Only the host restarts the shared wave/enemy state; let a non-host
+      // player know their click registered instead of doing nothing visibly.
+      this.gameOverHint.setText('Waiting for the host to start a new game...').setVisible(true);
     }
-    // Non-host: wait for the host's new-game broadcast rather than resetting
-    // unilaterally, since only the host actually restarts the shared wave/enemy state.
   }
 
   applyNewGame() {
@@ -940,8 +960,12 @@ export default class GameScene extends Phaser.Scene {
     net.players.forEach(p => {
       if (p.id !== net.id) this.addRemotePlayer(p.id, p.color, p.name);
     });
+    this.refreshLobbyList();
 
-    net.on('player-joined', (msg) => this.addRemotePlayer(msg.id, msg.color, msg.name));
+    net.on('player-joined', (msg) => {
+      this.addRemotePlayer(msg.id, msg.color, msg.name);
+      this.refreshLobbyList();
+    });
 
     net.on('player-left', (msg) => {
       const remote = this.remotePlayers.get(msg.id);
@@ -953,6 +977,7 @@ export default class GameScene extends Phaser.Scene {
         this.deadPlayerIds.delete(msg.id);
         this.checkAllPlayersDead();
       }
+      this.refreshLobbyList();
     });
 
     net.on('player-state', (msg) => {
@@ -970,6 +995,7 @@ export default class GameScene extends Phaser.Scene {
         this.retargetHostEnemies();
         this.checkAllPlayersDead();
       }
+      this.refreshLobbyList();
     });
 
     net.on('game-over', (msg) => this.applyGameOver(msg));
@@ -1001,6 +1027,19 @@ export default class GameScene extends Phaser.Scene {
     if (this.remotePlayers.has(id)) return;
     const remote = new RemotePlayer(this, this.player.sprite.x, this.player.sprite.y, color, name);
     this.remotePlayers.set(id, remote);
+  }
+
+  refreshLobbyList() {
+    if (!this.lobbyListText) return;
+
+    const localName = getPlayerName() || 'Player';
+    const lines = [`${localName} (you)${this.isHost ? ' [host]' : ''}${this.spectating ? ' [dead]' : ''}`];
+    this.remotePlayers.forEach((remote, id) => {
+      const isRemoteHost = id === this.net.hostId;
+      lines.push(`${remote.name}${isRemoteHost ? ' [host]' : ''}${remote.dead ? ' [dead]' : ''}`);
+    });
+
+    this.lobbyListText.setText(['Lobby:', ...lines].join('\n'));
   }
 
   // Non-host only: replace/refresh the visual-only enemy roster from the

@@ -19,7 +19,8 @@ export default class RemotePlayer {
     this.gunSprite.setDisplaySize(startWeapon.width, startWeapon.height);
     if (color != null) this.gunSprite.setTint(color);
 
-    this.nameText = scene.add.text(x, y - 30, name || 'Player', {
+    this.name = name || 'Player';
+    this.nameText = scene.add.text(x, y - 30, this.name, {
       fontSize: '13px',
       fill: '#ffffff',
       backgroundColor: '#000000aa',

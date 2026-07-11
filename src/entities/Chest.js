@@ -1,6 +1,23 @@
 import Phaser from 'phaser';
 
 export default class Chest {
+  // Special crate weapon pool, weighted by rolling common weapons multiple
+  // times and rarer/heavier ones once each. tankCall stays a solid chunk of
+  // the pool without dominating it now that there are far more weapons.
+  static get SPECIAL_REWARDS() {
+    return [
+      'saw', 'm4-upgrade',
+      'glock17', 'glock17', 'm1911', 'm1911', 'deagle',
+      'uzi', 'uzi', 'mp5', 'mp5', 'ump45', 'p90', 'vector',
+      'ak47', 'ak47', 'akm', 'akm', 'famas', 'g36', 'aug',
+      'scarh', 'svd', 'barrett',
+      'remington870', 'aa12',
+      'm240b',
+      'rocket', 'rpg7',
+      'tankCall', 'tankCall', 'tankCall', 'tankCall', 'tankCall'
+    ];
+  }
+
   constructor(scene, x, y, special = false) {
     this.scene = scene;
     this.opened = false;
@@ -91,11 +108,7 @@ export default class Chest {
 
     if (this.special) {
       this.sprite.setTexture('chestSpecialOpen');
-      // tankCall weighted heavier than the individual weapon rewards
-      return Phaser.Utils.Array.GetRandom([
-        'saw', 'm4-upgrade', 'rocket',
-        'tankCall', 'tankCall', 'tankCall'
-      ]);
+      return Phaser.Utils.Array.GetRandom(Chest.SPECIAL_REWARDS);
     }
 
     this.sprite.setTexture('chestOpen');

@@ -261,7 +261,10 @@ export default class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
     c.add(this.mpStatusText);
 
-    this.continueText = this.makeButton(width / 2, cy + 115, 'Continue', '#66ccff', () => {
+    this.continueText = this.makeButton(width / 2, cy + 115, 'Start Game', '#66ccff', () => {
+      const net = this.registry.get('multiplayerNetwork');
+      if (!net?.isHost) return;
+      net.send('start-game', {});
       this.scene.start('GameScene', { multiplayer: true });
     });
     this.continueText.setVisible(false);
@@ -319,6 +322,18 @@ export default class MenuScene extends Phaser.Scene {
     this.mpStatusText.setText(roomCode ? `Joining room ${roomCode}...` : 'Creating session...');
 
     const net = new NetworkManager();
+    const refreshLobby = () => {
+      const names = net.players.map(p => p.name || 'Player').join(', ');
+      this.mpStatusText.setText(
+        `Room code: ${net.roomCode}\n${net.players.length} player(s)${net.isHost ? ' (you are host)' : ''}: ${names}\n` +
+        (net.isHost ? 'Start when everyone is ready.' : 'Waiting for the host to start...')
+      );
+    };
+    net.on('player-joined', refreshLobby);
+    net.on('player-left', refreshLobby);
+    net.on('start-game', () => {
+      if (this.scene.isActive()) this.scene.start('GameScene', { multiplayer: true });
+    });
     net.on('waking-up', () => {
       this.mpStatusText.setText('Still connecting — server may be waking up, this can take up to a minute...');
     });
@@ -327,12 +342,9 @@ export default class MenuScene extends Phaser.Scene {
       .then(() => {
         this.mpConnecting = false;
         this.mpStatusText.setFill('#66ff88');
-        const names = net.players.map(p => p.name || 'Player').join(', ');
-        this.mpStatusText.setText(
-          `Room code: ${net.roomCode}\n${net.players.length} player(s)${net.isHost ? ' (you are host)' : ''}: ${names}\nShare the code with friends, then continue.`
-        );
         this.registry.set('multiplayerNetwork', net);
-        this.continueText.setVisible(true);
+        refreshLobby();
+        this.continueText.setVisible(net.isHost);
       })
       .catch((err) => {
         this.mpConnecting = false;

@@ -32,6 +32,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Multiplayer rooms share a seed so every client builds identical geometry.
+    this.mapRandom = this.createMapRandom(this.multiplayer ? this.net?.mapSeed : null);
+
     // World bounds (8x the original 800x600 arena)
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
@@ -68,7 +71,8 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.multiplayer) {
       this.localNameText = this.add.text(
-        this.player.sprite.x, this.player.sprite.y - 30, getPlayerName() || 'Player',
+        this.player.sprite.x, this.player.sprite.y - 30,
+        `${getPlayerName() || 'Player'}${this.isHost ? '  ♛ HOST' : ''}`,
         {
           fontSize: '13px',
           fill: '#ffffff',
@@ -468,6 +472,22 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  createMapRandom(seed) {
+    if (seed == null) return Math.random;
+    let state = seed >>> 0;
+    return () => {
+      state += 0x6D2B79F5;
+      let value = state;
+      value = Math.imul(value ^ (value >>> 15), value | 1);
+      value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  mapBetween(min, max) {
+    return Math.floor(this.mapRandom() * (max - min + 1)) + min;
+  }
+
   buildCell(originX, originY, cx, cy, cols, rows) {
     const wallLength = 128;
 
@@ -478,33 +498,33 @@ export default class GameScene extends Phaser.Scene {
     if (cx === cols - 1) this.buildWallRun(originX + 760, originY + 100, wallLength, false);
 
     // A short interior wall to break sightlines within the cell
-    if (Math.random() < 0.6) {
-      const wx = originX + Phaser.Math.Between(200, 600);
-      const wy = originY + Phaser.Math.Between(150, 450);
-      this.buildWallRun(wx, wy, 96, Math.random() < 0.5);
+    if (this.mapRandom() < 0.6) {
+      const wx = originX + this.mapBetween(200, 600);
+      const wy = originY + this.mapBetween(150, 450);
+      this.buildWallRun(wx, wy, 96, this.mapRandom() < 0.5);
     }
 
     // Scattered crate obstacles for cover
-    const crateCount = Phaser.Math.Between(2, 4);
+    const crateCount = this.mapBetween(2, 4);
     for (let i = 0; i < crateCount; i++) {
-      const x = originX + Phaser.Math.Between(80, 720);
-      const y = originY + Phaser.Math.Between(80, 520);
+      const x = originX + this.mapBetween(80, 720);
+      const y = originY + this.mapBetween(80, 520);
       new Obstacle(this, x, y, 32, 32);
     }
 
     // Chest (chance it's a special weapon/tank crate)
-    if (Math.random() < 0.65) {
-      const x = originX + Phaser.Math.Between(100, 700);
-      const y = originY + Phaser.Math.Between(100, 500);
-      const special = Math.random() < 0.3;
+    if (this.mapRandom() < 0.65) {
+      const x = originX + this.mapBetween(100, 700);
+      const y = originY + this.mapBetween(100, 500);
+      const special = this.mapRandom() < 0.3;
       new Chest(this, x, y, special);
     }
 
     // Small chance of a second chest in the same cell
-    if (Math.random() < 0.2) {
-      const x = originX + Phaser.Math.Between(100, 700);
-      const y = originY + Phaser.Math.Between(100, 500);
-      const special = Math.random() < 0.3;
+    if (this.mapRandom() < 0.2) {
+      const x = originX + this.mapBetween(100, 700);
+      const y = originY + this.mapBetween(100, 500);
+      const special = this.mapRandom() < 0.3;
       new Chest(this, x, y, special);
     }
   }
@@ -970,12 +990,12 @@ export default class GameScene extends Phaser.Scene {
     net.removeAllListeners();
 
     net.players.forEach(p => {
-      if (p.id !== net.id) this.addRemotePlayer(p.id, p.color, p.name);
+      if (p.id !== net.id) this.addRemotePlayer(p.id, p.color, p.name, p.isHost);
     });
     this.refreshLobbyList();
 
     net.on('player-joined', (msg) => {
-      this.addRemotePlayer(msg.id, msg.color, msg.name);
+      this.addRemotePlayer(msg.id, msg.color, msg.name, msg.isHost);
       this.refreshLobbyList();
     });
 
@@ -1035,9 +1055,9 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  addRemotePlayer(id, color, name) {
+  addRemotePlayer(id, color, name, isHost = false) {
     if (this.remotePlayers.has(id)) return;
-    const remote = new RemotePlayer(this, this.player.sprite.x, this.player.sprite.y, color, name);
+    const remote = new RemotePlayer(this, this.player.sprite.x, this.player.sprite.y, color, name, isHost);
     this.remotePlayers.set(id, remote);
   }
 

@@ -18,6 +18,8 @@ export default class NetworkManager {
     this.connected = false;
     this.listeners = {};
     this.roomCode = null;
+    this.mapSeed = null;
+    this.started = false;
   }
 
   on(event, callback) {
@@ -79,6 +81,8 @@ export default class NetworkManager {
           this.color = msg.color;
           this.players = msg.players;
           this.roomCode = msg.code;
+          this.mapSeed = msg.mapSeed;
+          this.started = !!msg.started;
           this.hostId = msg.isHost ? msg.id : (msg.players.find(p => p.isHost)?.id ?? null);
           if (!settled) {
             settled = true;
@@ -91,6 +95,16 @@ export default class NetworkManager {
             cleanup();
             reject(new Error(msg.reason || 'Could not join that room'));
           }
+        } else if (msg.type === 'player-joined') {
+          if (!this.players.some(p => p.id === msg.id)) {
+            this.players.push({ id: msg.id, color: msg.color, name: msg.name, isHost: !!msg.isHost });
+          }
+          if (msg.isHost) this.hostId = msg.id;
+        } else if (msg.type === 'player-left') {
+          this.players = this.players.filter(p => p.id !== msg.id);
+        } else if (msg.type === 'start-game') {
+          this.started = true;
+          if (msg.mapSeed != null) this.mapSeed = msg.mapSeed;
         }
 
         this.emit(msg.type, msg);

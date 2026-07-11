@@ -28,6 +28,8 @@ clamps/defaults the name server-side too.
   `{ type: 'player-left', id }`
 - `host-left` — the host disconnected; room is over, clients should return to the menu.
   `{ type: 'host-left' }`
+- `start-game` — the host started the room; waiting clients enter together using the
+  shared deterministic map seed. `{ type: 'start-game', mapSeed }`
 - `player-state` — relayed from another client's own `player-state` send (never echoed back to sender).
   `{ type: 'player-state', id, x, y, rotation, weaponKey, animFrame, flipX, health }`
 - `enemy-state` — relayed from the host only, broadcast to all non-host clients.
@@ -45,6 +47,8 @@ clamps/defaults the name server-side too.
 
 ## Client -> server
 
+- `start-game` — host-only lobby transition. Non-host attempts are ignored and the
+  room rejects later connection attempts. `{ type: 'start-game' }`
 - `player-state` — sent by every client (host and non-host) at ~15-20Hz for their own player.
   `{ type: 'player-state', x, y, rotation, weaponKey, animFrame, flipX, health }`
 - `enemy-state` — sent by the host only, throttled (~100-150ms).
@@ -62,6 +66,10 @@ clamps/defaults the name server-side too.
 - `new-game` — sent by the host only, when the player who chooses "Start new game" on the
   game-over screen is the host; tells everyone else to reset and rejoin the fresh run.
   `{ type: 'new-game' }`
+
+The host sends `start-game` when the lobby is ready. The server then locks the room
+against late joins and broadcasts the room's `mapSeed`, allowing every client to build
+the same deterministic map before play begins.
 
 The server stamps `id` onto relayed `player-state`/`player-died` messages (the sender's
 connection id) and routes `damage-event` specifically to the host connection, adding `fromId`.

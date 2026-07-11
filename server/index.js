@@ -13,7 +13,7 @@ const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I, avoid
 const COLORS = [0xff6666, 0x66ccff, 0x66ff88, 0xffcc66, 0xcc88ff, 0xff88cc, 0x88ffee, 0xffaa44];
 
 // Multiple rooms, each keyed by a short shareable code (see server/PROTOCOL.md).
-const rooms = new Map(); // code -> { hostId, clients: Map<id, { ws, color, name }> }
+const rooms = new Map(); // code -> { hostId, clients, started, mapSeed }
 
 function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -75,9 +75,20 @@ wss.on('connection', (ws, req) => {
       ws.close();
       return;
     }
+    if (room.started) {
+      log(`join-failed ${id}: room ${requestedCode} already started`);
+      send(ws, { type: 'join-failed', reason: 'Game already started' });
+      ws.close();
+      return;
+    }
   } else {
     code = generateRoomCode();
-    room = { hostId: null, clients: new Map() };
+    room = {
+      hostId: null,
+      clients: new Map(),
+      started: false,
+      mapSeed: crypto.randomInt(1, 0x7fffffff)
+    };
     rooms.set(code, room);
     log(`created room ${code}`);
   }
@@ -92,7 +103,10 @@ wss.on('connection', (ws, req) => {
 
   log(`room ${code}: ${id} joined as ${isHost ? 'host' : 'player'} (${room.clients.size} in room)`);
 
-  send(ws, { type: 'welcome', id, isHost, color, name, code, players: playerList(room) });
+  send(ws, {
+    type: 'welcome', id, isHost, color, name, code,
+    players: playerList(room), started: room.started, mapSeed: room.mapSeed
+  });
   broadcast(room, { type: 'player-joined', id, color, name, isHost }, id);
 
   ws.on('message', (raw) => {
@@ -108,6 +122,14 @@ wss.on('connection', (ws, req) => {
     if (!room) return;
 
     switch (msg.type) {
+      case 'start-game':
+        if (id === room.hostId && !room.started) {
+          room.started = true;
+          log(`room ${ws.roomCode}: start-game from host ${id}`);
+          broadcast(room, { type: 'start-game', mapSeed: room.mapSeed }, id);
+        }
+        break;
+
       case 'player-state':
         broadcast(room, { ...msg, id }, id);
         break;

@@ -285,7 +285,13 @@ export default class GameScene extends Phaser.Scene {
         align: 'center'
       }).setOrigin(0.5).setScrollFactor(0).setVisible(false);
 
-      this.lobbyListText = this.add.text(this.scale.width - 16, 50, '', {
+      this.roomCodeText = this.add.text(this.scale.width - 16, 50, `Room: ${this.net?.roomCode || ''}`, {
+        fontSize: '16px',
+        fontStyle: 'bold',
+        fill: '#66ff88'
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(1000);
+
+      this.lobbyListText = this.add.text(this.scale.width - 16, 74, '', {
         fontSize: '13px',
         fill: '#cccccc',
         align: 'right'
@@ -526,6 +532,12 @@ export default class GameScene extends Phaser.Scene {
 
     const turret = new Turret(this, x, y);
     this.turretInstances.push(turret);
+
+    this.time.delayedCall(10000, () => {
+      if (!this.turretInstances.includes(turret)) return;
+      this.turretInstances = this.turretInstances.filter(t => t !== turret);
+      turret.destroy();
+    });
   }
 
   throwGrenade(targetX, targetY) {
@@ -1031,6 +1043,8 @@ export default class GameScene extends Phaser.Scene {
 
   refreshLobbyList() {
     if (!this.lobbyListText) return;
+
+    if (this.roomCodeText) this.roomCodeText.setText(`Room: ${this.net.roomCode || ''}`);
 
     const localName = getPlayerName() || 'Player';
     const lines = [`${localName} (you)${this.isHost ? ' [host]' : ''}${this.spectating ? ' [dead]' : ''}`];

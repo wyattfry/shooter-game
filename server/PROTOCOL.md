@@ -3,17 +3,25 @@
 All messages are JSON objects over one WebSocket connection, shape `{ type, ...payload }`.
 The server is a dumb relay + room/host bookkeeper — it does not simulate anything.
 
-There is a single shared room for v1 (no room codes). Everyone who connects joins it.
-The first client in the room is the host; if the host disconnects the room is torn down
-and remaining clients get `host-left`.
+Rooms are keyed by a short 4-character shareable code (letters/digits, excluding
+ambiguous characters like 0/O/1/I). The first client to connect without a `room` query
+param creates a new room and gets a freshly generated code back in `welcome`; a client
+that connects with `?room=<code>` joins that existing room, or gets `join-failed` if it
+doesn't exist or is full (max 8 players). The first client in a room is its host; if the
+host disconnects the room is torn down and remaining clients get `host-left`.
 
-Clients connect with a `?name=<up to 20 chars>` query param on the WebSocket URL (set on
-the main menu, persisted in localStorage). The server clamps/defaults it server-side too.
+Clients connect with `?name=<up to 20 chars>&room=<code, omit to create>` query params on
+the WebSocket URL (name is set on the main menu, persisted in localStorage; room code is
+entered via the Join Session flow, or left blank via Create Session). The server
+clamps/defaults the name server-side too.
 
 ## Server -> client
 
 - `welcome` — sent once, right after connect.
-  `{ type: 'welcome', id, isHost, color, name, players: [{ id, color, name, isHost }] }`
+  `{ type: 'welcome', id, isHost, color, name, code, players: [{ id, color, name, isHost }] }`
+- `join-failed` — sent instead of `welcome` when a requested `?room=<code>` doesn't exist
+  or is full; the server closes the socket right after.
+  `{ type: 'join-failed', reason }`
 - `player-joined` — a new player joined the room.
   `{ type: 'player-joined', id, color, name, isHost }`
 - `player-left` — a player disconnected.

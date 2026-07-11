@@ -76,9 +76,12 @@ export default class MenuScene extends Phaser.Scene {
     this.mainContainer = this.add.container(0, 0);
     this.shopContainer = this.add.container(0, 0);
     this.shopContainer.setVisible(false);
+    this.multiplayerContainer = this.add.container(0, 0);
+    this.multiplayerContainer.setVisible(false);
 
     this.buildMainMenu(width, height);
     this.buildShop(width, height);
+    this.buildMultiplayerMenu(width, height);
 
     this.coinCounter = new CoinCounter(this);
   }
@@ -120,15 +123,11 @@ export default class MenuScene extends Phaser.Scene {
     this.refreshZombieToggle();
 
     this.multiplayerText = this.makeButton(width / 2, height / 2 + 145, 'Multiplayer', '#ff88ff', () => {
-      this.startMultiplayerFlow();
+      this.mainContainer.setVisible(false);
+      this.multiplayerContainer.setVisible(true);
+      this.resetMultiplayerMenu();
     });
     c.add(this.multiplayerText);
-
-    this.mpStatusText = this.add.text(width / 2, height / 2 + 180, '', {
-      fontSize: '14px',
-      fill: '#aaaaaa'
-    }).setOrigin(0.5);
-    c.add(this.mpStatusText);
 
     c.add(this.add.text(
       width / 2,
@@ -203,29 +202,137 @@ export default class MenuScene extends Phaser.Scene {
     this.nameFieldText.setText(this.displayName());
   }
 
-  startMultiplayerFlow() {
+  buildMultiplayerMenu(width, height) {
+    const c = this.multiplayerContainer;
+    const cy = height / 2;
+
+    c.add(this.add.text(width / 2, cy - 160, 'MULTIPLAYER', {
+      fontSize: '40px',
+      fontStyle: 'bold',
+      fill: '#ffffff'
+    }).setOrigin(0.5));
+
+    const createText = this.makeButton(width / 2, cy - 90, 'Create Session', '#66ccff', () => {
+      this.connectMultiplayer('');
+    });
+    c.add(createText);
+
+    c.add(this.add.text(width / 2, cy - 50, 'or join a friend\'s session:', {
+      fontSize: '14px',
+      fill: '#aaaaaa'
+    }).setOrigin(0.5));
+
+    this.roomCodeLabel = this.add.text(width / 2 - 130, cy - 15, 'Code:', {
+      fontSize: '15px',
+      fill: '#aaaaaa'
+    }).setOrigin(1, 0.5);
+    c.add(this.roomCodeLabel);
+
+    this.roomCodeValue = '';
+    this.editingRoomCode = false;
+
+    this.roomCodeBox = this.add.rectangle(width / 2, cy - 15, 140, 28, 0x14213d)
+      .setStrokeStyle(2, 0x2a5aa1)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.setEditingRoomCode(true))
+      .on('pointerover', () => this.roomCodeBox.setStrokeStyle(2, 0x66ccff))
+      .on('pointerout', () => this.roomCodeBox.setStrokeStyle(2, this.editingRoomCode ? 0x66ccff : 0x2a5aa1));
+    c.add(this.roomCodeBox);
+
+    this.roomCodeText = this.add.text(width / 2, cy - 15, this.displayRoomCode(), {
+      fontSize: '16px',
+      fontStyle: 'bold',
+      fill: '#ffffff'
+    }).setOrigin(0.5);
+    c.add(this.roomCodeText);
+
+    const joinText = this.makeButton(width / 2 + 110, cy - 15, 'Join', '#66ff88', () => {
+      if (this.roomCodeValue.length === 4) this.connectMultiplayer(this.roomCodeValue);
+    });
+    joinText.setFontSize(18);
+    c.add(joinText);
+
+    this.mpStatusText = this.add.text(width / 2, cy + 35, '', {
+      fontSize: '14px',
+      fill: '#aaaaaa',
+      align: 'center',
+      lineSpacing: 4,
+      wordWrap: { width: 500 }
+    }).setOrigin(0.5);
+    c.add(this.mpStatusText);
+
+    this.continueText = this.makeButton(width / 2, cy + 115, 'Continue', '#66ccff', () => {
+      this.scene.start('GameScene', { multiplayer: true });
+    });
+    this.continueText.setVisible(false);
+    c.add(this.continueText);
+
+    const backText = this.makeButton(width / 2, cy + 155, 'Back', '#aaaaaa', () => {
+      this.multiplayerContainer.setVisible(false);
+      this.mainContainer.setVisible(true);
+    });
+    c.add(backText);
+
+    this.input.keyboard.on('keydown', (event) => {
+      if (!this.editingRoomCode) return;
+
+      if (event.key === 'Enter') {
+        this.setEditingRoomCode(false);
+        if (this.roomCodeValue.length === 4) this.connectMultiplayer(this.roomCodeValue);
+      } else if (event.key === 'Escape') {
+        this.setEditingRoomCode(false);
+      } else if (event.key === 'Backspace') {
+        this.roomCodeValue = this.roomCodeValue.slice(0, -1);
+      } else if (/^[a-zA-Z0-9]$/.test(event.key) && this.roomCodeValue.length < 4) {
+        this.roomCodeValue += event.key.toUpperCase();
+      }
+      this.roomCodeText.setText(this.displayRoomCode());
+    });
+
+    this.input.on('pointerdown', (pointer, currentlyOver) => {
+      if (this.editingRoomCode && !currentlyOver.includes(this.roomCodeBox)) {
+        this.setEditingRoomCode(false);
+      }
+    });
+  }
+
+  displayRoomCode() {
+    return (this.roomCodeValue || '----') + (this.editingRoomCode ? '|' : '');
+  }
+
+  setEditingRoomCode(editing) {
+    this.editingRoomCode = editing;
+    this.roomCodeBox.setStrokeStyle(2, editing ? 0x66ccff : 0x2a5aa1);
+    this.roomCodeText.setText(this.displayRoomCode());
+  }
+
+  resetMultiplayerMenu() {
+    this.mpStatusText.setText('');
+    this.mpConnecting = false;
+    this.continueText.setVisible(false);
+  }
+
+  connectMultiplayer(roomCode) {
     if (this.mpConnecting) return;
     this.mpConnecting = true;
     this.mpStatusText.setFill('#ffcc66');
-    this.mpStatusText.setText('Connecting...');
+    this.mpStatusText.setText(roomCode ? `Joining room ${roomCode}...` : 'Creating session...');
 
     const net = new NetworkManager();
     net.on('waking-up', () => {
       this.mpStatusText.setText('Still connecting — server may be waking up, this can take up to a minute...');
     });
 
-    net.connect(undefined, this.playerName || 'Player')
+    net.connect(undefined, this.playerName || 'Player', roomCode)
       .then(() => {
         this.mpConnecting = false;
         this.mpStatusText.setFill('#66ff88');
         const names = net.players.map(p => p.name || 'Player').join(', ');
         this.mpStatusText.setText(
-          `Connected — ${net.players.length} player(s) in room${net.isHost ? ' (you are host)' : ''}: ${names}`
+          `Room code: ${net.roomCode}\n${net.players.length} player(s)${net.isHost ? ' (you are host)' : ''}: ${names}\nShare the code with friends, then continue.`
         );
         this.registry.set('multiplayerNetwork', net);
-        this.time.delayedCall(400, () => {
-          this.scene.start('GameScene', { multiplayer: true });
-        });
+        this.continueText.setVisible(true);
       })
       .catch((err) => {
         this.mpConnecting = false;

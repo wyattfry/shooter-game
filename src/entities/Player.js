@@ -807,6 +807,10 @@ export default class Player {
     const x = this.sprite.x + Math.cos(angle) * muzzleLength;
     const y = this.sprite.y + Math.sin(angle) * muzzleLength;
 
+    // Small baseline inaccuracy on automatic fire so sustained shooting isn't
+    // laser-precise; faster-firing weapons kick a bit more than slow ones.
+    const autoSpread = Phaser.Math.Clamp(0.2 - weapon.rapidFireDelay * 0.0012, 0.04, 0.2);
+
     if (weapon.isRocket) {
       new RocketProjectile(this.scene, x, y, angle);
     } else if (weapon.pellets > 1) {
@@ -816,7 +820,8 @@ export default class Player {
         new Projectile(this.scene, x, y, pelletAngle);
       }
     } else {
-      new Projectile(this.scene, x, y, angle);
+      const fireAngle = angle + (Math.random() - 0.5) * autoSpread;
+      new Projectile(this.scene, x, y, fireAngle);
     }
 
     if (this.magAmmo !== Infinity) {

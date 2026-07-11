@@ -17,6 +17,7 @@ export default class NetworkManager {
     this.players = [];
     this.connected = false;
     this.listeners = {};
+    this.roomCode = null;
   }
 
   on(event, callback) {
@@ -32,10 +33,14 @@ export default class NetworkManager {
     (this.listeners[event] || []).forEach(cb => cb(payload));
   }
 
-  connect(url = WS_URL, name = '') {
+  connect(url = WS_URL, name = '', roomCode = '') {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const connectUrl = name ? `${url}?name=${encodeURIComponent(name)}` : url;
+      const params = new URLSearchParams();
+      if (name) params.set('name', name);
+      if (roomCode) params.set('room', roomCode);
+      const query = params.toString();
+      const connectUrl = query ? `${url}?${query}` : url;
       this.ws = new WebSocket(connectUrl);
 
       // Render's free tier can take 30-50s to wake from a cold start; give it
@@ -73,11 +78,18 @@ export default class NetworkManager {
           this.isHost = msg.isHost;
           this.color = msg.color;
           this.players = msg.players;
+          this.roomCode = msg.code;
           this.hostId = msg.isHost ? msg.id : (msg.players.find(p => p.isHost)?.id ?? null);
           if (!settled) {
             settled = true;
             cleanup();
             resolve(this);
+          }
+        } else if (msg.type === 'join-failed') {
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(new Error(msg.reason || 'Could not join that room'));
           }
         }
 

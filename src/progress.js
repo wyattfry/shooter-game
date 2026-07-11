@@ -1,7 +1,9 @@
 const COINS_KEY = 'shooter.coins';
 const UNLOCKS_KEY = 'shooter.unlockedWeapons';
+const NAME_KEY = 'shooter.playerName';
 
 const DEFAULT_UNLOCKED = ['m4a1'];
+const MAX_NAME_LENGTH = 20;
 
 export function getCoins() {
   const raw = localStorage.getItem(COINS_KEY);
@@ -44,3 +46,15 @@ export function unlockWeapon(key) {
     localStorage.setItem(UNLOCKS_KEY, JSON.stringify(unlocked));
   }
 }
+
+export function getPlayerName() {
+  return localStorage.getItem(NAME_KEY) || '';
+}
+
+export function setPlayerName(name) {
+  const trimmed = name.slice(0, MAX_NAME_LENGTH);
+  localStorage.setItem(NAME_KEY, trimmed);
+  return trimmed;
+}
+
+export { MAX_NAME_LENGTH };

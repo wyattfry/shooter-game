@@ -12,6 +12,22 @@ export default class Tank {
     this.mgShootCooldown = 0;
     this.mgShootDelay = 50;
     this.driving = false;
+    this.mode = 'tank'; // 'tank' | 'mech'
+    this.mechSpeed = 140;
+
+    // Cannon: small magazine (shells are heavy), several reloads
+    this.shellMagSize = Phaser.Math.Between(3, 6);
+    this.shellAmmo = this.shellMagSize;
+    this.shellReserve = Phaser.Math.Between(2, 6);
+    this.shellReloading = false;
+    this.shellReloadTime = 0;
+
+    // Coax MG: belt-fed, larger magazine, fewer reloads
+    this.mgMagSize = Phaser.Math.Between(80, 150);
+    this.mgAmmo = this.mgMagSize;
+    this.mgReserve = Phaser.Math.Between(1, 4);
+    this.mgReloading = false;
+    this.mgReloadTime = 0;
 
     Tank.ensureTextures(scene);
 
@@ -24,6 +40,16 @@ export default class Tank {
     this.turretSprite = scene.add.image(x, y, 'tankTurret');
     this.turretSprite.setDisplaySize(48, 20);
     this.turretSprite.setOrigin(10 / 48, 8 / 20);
+
+    // Prompt shown when driving, telling the player they can transform
+    this.transformPromptText = scene.add.text(x, y - 55, 'Press Q to transform', {
+      fontSize: '12px',
+      fill: '#ffffff',
+      backgroundColor: '#000000aa',
+      padding: { x: 4, y: 2 }
+    });
+    this.transformPromptText.setOrigin(0.5, 0.5);
+    this.transformPromptText.setVisible(false);
 
     scene.tanks.add(this.sprite);
 
@@ -177,6 +203,179 @@ export default class Tank {
 
     g.generateTexture('tankTurret', 48, 20);
     g.destroy();
+
+    Tank.ensureMechTexture(scene);
+  }
+
+  static ensureMechTexture(scene) {
+    if (scene.textures.exists('mechWalk')) {
+      if (!scene.anims.exists('mech-walk')) {
+        scene.anims.create({
+          key: 'mech-walk',
+          frames: scene.anims.generateFrameNumbers('mechWalk', { start: 0, end: 3 }),
+          frameRate: 8,
+          repeat: -1
+        });
+      }
+      return;
+    }
+
+    const frameW = 64;
+    const frameH = 44;
+    const frames = 4;
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+
+    // Stride offsets per frame: how far the rear/front leg extend from their
+    // resting hip position, cycling through a walk (both planted, rear back
+    // + front forward, both planted, rear forward + front back).
+    const strides = [0, 6, 0, -6];
+
+    for (let i = 0; i < frames; i++) {
+      const ox = i * frameW;
+      const stride = strides[i];
+      Tank.drawMechFrame(g, ox, stride);
+    }
+
+    g.generateTexture('mechWalk', frameW * frames, frameH);
+    g.destroy();
+
+    scene.textures.get('mechWalk').setFilter(Phaser.Textures.FilterMode.NEAREST);
+
+    for (let i = 0; i < frames; i++) {
+      scene.textures.get('mechWalk').add(i, 0, i * frameW, 0, frameW, frameH);
+    }
+
+    scene.anims.create({
+      key: 'mech-walk',
+      frames: scene.anims.generateFrameNumbers('mechWalk', { start: 0, end: 3 }),
+      frameRate: 8,
+      repeat: -1
+    });
+  }
+
+  static drawMechFrame(g, ox, stride) {
+    const bodyColor = 0x3c4a2b;
+    const bodyLight = 0x4d5c38;
+    const bodyDark = 0x2a331e;
+    const bodyDarker = 0x1c2314;
+    const bodyDarkest = 0x121a0c;
+    const metal = 0x666666;
+    const metalDark = 0x3a3a3a;
+    const metalLight = 0x8a8a8a;
+    const glow = 0x66ffcc;
+    const hydraulic = 0x2f2f2f;
+
+    // Rear leg swings opposite the front leg
+    const rearX = ox - stride;
+    const frontX = ox + stride;
+
+    // Ground shadow
+    g.fillStyle(0x000000, 0.3);
+    g.fillEllipse(ox + 32, 41, 46, 6);
+
+    // Rear leg (trailing, slightly bent back)
+    g.fillStyle(bodyDarkest);
+    g.fillRect(rearX + 16, 24, 8, 10);
+    g.fillRect(rearX + 12, 32, 8, 8);
+    g.fillStyle(bodyDark);
+    g.fillRect(rearX + 17, 25, 6, 8);
+    g.fillRect(rearX + 13, 33, 6, 6);
+    // Rear hydraulic piston
+    g.fillStyle(hydraulic);
+    g.fillRect(rearX + 22, 27, 2, 8);
+    g.fillStyle(metalLight);
+    g.fillRect(rearX + 22, 27, 2, 2);
+    // Rear knee joint
+    g.fillStyle(metal);
+    g.fillCircle(rearX + 20, 31, 2.4);
+    // Rear foot
+    g.fillStyle(0x0a0f07);
+    g.fillRect(rearX + 8, 39, 14, 4);
+    g.fillStyle(metalDark);
+    g.fillRect(rearX + 8, 39, 14, 1.4);
+
+    // Front leg (leading, planted forward)
+    g.fillStyle(bodyDark);
+    g.fillRect(frontX + 38, 23, 9, 11);
+    g.fillRect(frontX + 42, 31, 8, 9);
+    g.fillStyle(bodyColor);
+    g.fillRect(frontX + 39, 24, 7, 9);
+    g.fillRect(frontX + 43, 32, 6, 7);
+    // Front hydraulic piston
+    g.fillStyle(hydraulic);
+    g.fillRect(frontX + 36, 26, 2, 8);
+    g.fillStyle(metalLight);
+    g.fillRect(frontX + 36, 26, 2, 2);
+    // Front knee joint
+    g.fillStyle(metal);
+    g.fillCircle(frontX + 42, 30, 2.8);
+    g.fillStyle(metalLight);
+    g.fillCircle(frontX + 41.3, 29.3, 1);
+    // Front foot
+    g.fillStyle(0x141a0e);
+    g.fillRect(frontX + 40, 39, 16, 5);
+    g.fillStyle(metalDark);
+    g.fillRect(frontX + 40, 39, 16, 1.6);
+
+    // Hip/waist assembly (fixed, doesn't move with stride)
+    g.fillStyle(bodyDarker);
+    g.fillRect(ox + 18, 19, 30, 8);
+    g.fillStyle(bodyDark);
+    g.fillRect(ox + 19, 20, 28, 5);
+
+    // Torso, leaning slightly forward toward the front leg
+    g.fillStyle(bodyDarker);
+    g.fillRect(ox + 14, 4, 38, 18);
+    g.fillStyle(bodyDark);
+    g.fillRect(ox + 16, 5, 34, 15);
+    g.fillStyle(bodyColor);
+    g.fillRect(ox + 18, 6, 30, 11);
+    g.fillStyle(bodyLight);
+    g.fillRect(ox + 18, 6, 30, 3);
+
+    // Chest armor seam + rivets
+    g.fillStyle(bodyDarkest);
+    for (let i = 0; i < 4; i++) {
+      g.fillCircle(ox + 22 + i * 8, 9, 0.9);
+    }
+
+    // Rear shoulder pauldron (smaller, behind)
+    g.fillStyle(bodyDarkest);
+    g.fillCircle(ox + 16, 8, 5.5);
+    g.fillStyle(bodyDark);
+    g.fillCircle(ox + 16, 8, 3.8);
+
+    // Front shoulder pauldron + weapon hardpoint (larger, foreground)
+    g.fillStyle(bodyDarkest);
+    g.fillCircle(ox + 48, 7, 7);
+    g.fillStyle(bodyColor);
+    g.fillCircle(ox + 48, 7, 5);
+    g.fillStyle(metalDark);
+    g.fillRect(ox + 50, 3, 5, 4);
+
+    // Cockpit canopy (angled, facing forward/right, glowing)
+    g.fillStyle(0x0d1a1a);
+    g.fillTriangle(ox + 30, 6, ox + 46, 9, ox + 30, 16);
+    g.fillStyle(glow, 0.85);
+    g.fillTriangle(ox + 31, 7.5, ox + 44, 9.5, ox + 31, 14.5);
+    g.fillStyle(0xffffff, 0.45);
+    g.fillTriangle(ox + 31, 7.5, ox + 37, 8.5, ox + 31, 10.5);
+
+    // Head/sensor unit above the torso
+    g.fillStyle(bodyDarkest);
+    g.fillRect(ox + 26, 0, 12, 5);
+    g.fillStyle(metal);
+    g.fillRect(ox + 27, 1, 4, 3);
+    g.fillStyle(0xff3b30);
+    g.fillCircle(ox + 35, 2.5, 1.3);
+
+    // Exhaust/vent stacks on the back
+    g.fillStyle(bodyDarkest);
+    g.fillRect(ox + 12, 7, 4, 10);
+    g.fillStyle(0x0a0a0a);
+    g.fillRect(ox + 12, 8, 4, 1.5);
+    g.fillRect(ox + 12, 11, 4, 1.5);
+    g.fillRect(ox + 12, 14, 4, 1.5);
   }
 
   update(playerSprite, keys) {
@@ -190,23 +389,51 @@ export default class Tank {
     }
 
     this.promptText.setVisible(false);
+    this.transformPromptText.setVisible(true);
+    this.transformPromptText.setPosition(this.sprite.x, this.sprite.y - 55);
     this.turretSprite.setPosition(this.sprite.x, this.sprite.y);
 
-    // Driving controls: forward/back + rotate, tank-style
     const body = this.sprite.body;
-    let speed = 0;
-    if (keys.up) speed = this.speed;
-    else if (keys.down) speed = -this.speed * 0.6;
 
-    let angularVel = 0;
-    if (keys.left) angularVel = -this.turnSpeed;
-    if (keys.right) angularVel = this.turnSpeed;
+    if (this.mode === 'tank') {
+      // Tank controls: forward/back + rotate, tank-style, hull rotates with turning
+      let speed = 0;
+      if (keys.up) speed = this.speed;
+      else if (keys.down) speed = -this.speed * 0.6;
 
-    this.sprite.rotation += angularVel * (1 / 60);
-    body.setVelocity(
-      Math.cos(this.sprite.rotation) * speed,
-      Math.sin(this.sprite.rotation) * speed
-    );
+      let angularVel = 0;
+      if (keys.left) angularVel = -this.turnSpeed;
+      if (keys.right) angularVel = this.turnSpeed;
+
+      this.sprite.rotation += angularVel * (1 / 60);
+      body.setVelocity(
+        Math.cos(this.sprite.rotation) * speed,
+        Math.sin(this.sprite.rotation) * speed
+      );
+    } else {
+      // Mech controls: A/D turn in place, W/S walk forward/back along facing.
+      // Sprite is drawn side-on (facing right), same convention as the tank hull.
+      let speed = 0;
+      if (keys.up) speed = this.mechSpeed;
+      else if (keys.down) speed = -this.mechSpeed * 0.6;
+
+      let angularVel = 0;
+      if (keys.left) angularVel = -this.turnSpeed;
+      if (keys.right) angularVel = this.turnSpeed;
+
+      this.sprite.rotation += angularVel * (1 / 60);
+      body.setVelocity(
+        Math.cos(this.sprite.rotation) * speed,
+        Math.sin(this.sprite.rotation) * speed
+      );
+
+      if (speed !== 0 || angularVel !== 0) {
+        if (!this.sprite.anims.isPlaying) this.sprite.play('mech-walk');
+      } else {
+        this.sprite.anims.stop();
+        this.sprite.setTexture('mechWalk', 0);
+      }
+    }
 
     // Turret aims at the mouse independently of hull rotation
     const angle = Phaser.Math.Angle.Between(
@@ -220,12 +447,60 @@ export default class Tank {
     if (this.shootCooldown > 0) this.shootCooldown -= 1000 / 60;
     if (this.mgShootCooldown > 0) this.mgShootCooldown -= 1000 / 60;
 
+    if (this.shellReloading) {
+      this.shellReloadTime -= 1000 / 60;
+      if (this.shellReloadTime <= 0) {
+        this.shellReloading = false;
+        this.shellReserve--;
+        this.shellAmmo = this.shellMagSize;
+      }
+    }
+    if (this.mgReloading) {
+      this.mgReloadTime -= 1000 / 60;
+      if (this.mgReloadTime <= 0) {
+        this.mgReloading = false;
+        this.mgReserve--;
+        this.mgAmmo = this.mgMagSize;
+      }
+    }
+
     return true;
   }
 
+  reload() {
+    if (!this.shellReloading && this.shellAmmo < this.shellMagSize && this.shellReserve > 0) {
+      this.shellReloading = true;
+      this.shellReloadTime = 2000;
+    }
+    if (!this.mgReloading && this.mgAmmo < this.mgMagSize && this.mgReserve > 0) {
+      this.mgReloading = true;
+      this.mgReloadTime = 1500;
+    }
+  }
+
+  transform() {
+    this.mode = this.mode === 'tank' ? 'mech' : 'tank';
+    if (this.mode === 'tank') {
+      this.sprite.anims.stop();
+      this.sprite.setTexture('tankBody');
+    } else {
+      this.sprite.setTexture('mechWalk', 0);
+    }
+    this.sprite.setDisplaySize(this.mode === 'tank' ? 56 : 64, this.mode === 'tank' ? 40 : 44);
+
+    if (this.mode === 'tank') {
+      this.sprite.body.setSize(50, 36);
+    } else {
+      this.sprite.body.setSize(56, 38);
+    }
+  }
+
   shoot() {
-    if (this.shootCooldown > 0) return;
+    if (this.shootCooldown > 0 || this.shellReloading || this.shellAmmo <= 0) return;
     this.shootCooldown = this.shootDelay;
+    this.shellAmmo--;
+
+    if (this.shellAmmo <= 0) this.reload();
 
     if (!this.scene.textures.exists('tankShellTexture')) {
       const g = this.scene.make.graphics({ x: 0, y: 0, add: false });
@@ -253,8 +528,11 @@ export default class Tank {
   }
 
   shootMachineGun() {
-    if (this.mgShootCooldown > 0) return;
+    if (this.mgShootCooldown > 0 || this.mgReloading || this.mgAmmo <= 0) return;
     this.mgShootCooldown = this.mgShootDelay;
+    this.mgAmmo--;
+
+    if (this.mgAmmo <= 0) this.reload();
 
     if (!this.scene.textures.exists('tankMgBulletTexture')) {
       const g = this.scene.make.graphics({ x: 0, y: 0, add: false });
@@ -292,6 +570,7 @@ export default class Tank {
 
   exit() {
     this.driving = false;
+    this.transformPromptText.setVisible(false);
   }
 
   takeDamage(amount) {
@@ -302,5 +581,6 @@ export default class Tank {
     this.sprite.destroy();
     this.turretSprite.destroy();
     this.promptText.destroy();
+    this.transformPromptText.destroy();
   }
 }

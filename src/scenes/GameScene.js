@@ -10,15 +10,25 @@ import DeadBody from '../entities/DeadBody.js';
 import Chest from '../entities/Chest.js';
 import Tank from '../entities/Tank.js';
 import Grenade from '../entities/Grenade.js';
-import { addCoins } from '../progress.js';
+import { addCoins, getPlayerName } from '../progress.js';
 import CoinCounter from '../ui/CoinCounter.js';
+import RemotePlayer from '../entities/RemotePlayer.js';
 
 const WORLD_WIDTH = 6400;
 const WORLD_HEIGHT = 4800;
 
+const PLAYER_STATE_INTERVAL = 66; // ~15Hz
+const ENEMY_STATE_INTERVAL = 120;
+
 export default class GameScene extends Phaser.Scene {
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  init(data) {
+    this.multiplayer = !!(data && data.multiplayer);
+    this.net = this.multiplayer ? this.registry.get('multiplayerNetwork') : null;
+    this.isHost = this.net ? this.net.isHost : true;
   }
 
   create() {
@@ -56,6 +66,18 @@ export default class GameScene extends Phaser.Scene {
       this.player.setWeapon(startWeapon);
     }
 
+    if (this.multiplayer) {
+      this.localNameText = this.add.text(
+        this.player.sprite.x, this.player.sprite.y - 30, getPlayerName() || 'Player',
+        {
+          fontSize: '13px',
+          fill: '#ffffff',
+          backgroundColor: '#000000aa',
+          padding: { x: 3, y: 1 }
+        }
+      ).setOrigin(0.5, 1);
+    }
+
     // Camera follows the player across the larger world
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player.sprite, true, 0.1, 0.1);
@@ -67,8 +89,21 @@ export default class GameScene extends Phaser.Scene {
     this.gameOver = false;
     this.grenadeThrowCooldown = 0;
 
-    // Spawn enemies
-    this.spawnWave();
+    // Multiplayer: remote player ghosts and (on non-host) visual-only enemies
+    // driven by host broadcasts. All of this is inert in single-player.
+    this.remotePlayers = new Map();
+    this.remoteEnemiesById = new Map();
+    this.playerStateTimer = 0;
+    this.enemyStateTimer = 0;
+    this.spectating = false;
+    if (this.multiplayer && this.isHost) this.deadPlayerIds = new Set();
+    if (this.multiplayer) this.setupMultiplayer();
+
+    // Spawn enemies (host-authoritative in multiplayer; non-host clients
+    // instead wait for enemy-state broadcasts from the host)
+    if (!this.multiplayer || this.isHost) {
+      this.spawnWave();
+    }
 
     // Input
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -77,6 +112,18 @@ export default class GameScene extends Phaser.Scene {
     this.eKey.on('down', () => this.toggleTank());
     this.tKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
     this.tKey.on('down', () => this.placeTurret(this.player.sprite.x, this.player.sprite.y));
+    this.qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.qKey.on('down', () => {
+      if (this.activeTank) this.activeTank.transform();
+    });
+    this.rKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.rKey.on('down', () => {
+      if (this.activeTank) {
+        this.activeTank.reload();
+      } else {
+        this.player.reload();
+      }
+    });
     this.tankKeys = this.input.keyboard.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
       down: Phaser.Input.Keyboard.KeyCodes.S,
@@ -180,9 +227,25 @@ export default class GameScene extends Phaser.Scene {
       fill: '#ffcc66'
     }).setScrollFactor(0);
 
+    this.ammoStatusText = this.add.text(16, 184, '', {
+      fontSize: '16px',
+      fill: '#cccccc'
+    }).setScrollFactor(0);
+
+    this.heatBarWidth = 160;
+    this.heatBarBg = this.add.rectangle(16, 210, this.heatBarWidth, 10, 0x222222)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, 0x555555);
+    this.heatBarFill = this.add.rectangle(17, 210, 0, 8, 0x66ff66)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0);
+    this.heatBarBg.setVisible(false);
+    this.heatBarFill.setVisible(false);
+
     this.coinCounter = new CoinCounter(this);
 
-    this.add.text(16, 570, 'T: place turret (max 2)   Right-click: throw grenade   E: enter/exit tank', {
+    this.add.text(16, 570, 'T: place turret (max 2)   Right-click: throw grenade   E: enter/exit tank   Q: transform tank/mech', {
       fontSize: '14px',
       fill: '#aaaaaa'
     }).setScrollFactor(0);
@@ -193,16 +256,58 @@ export default class GameScene extends Phaser.Scene {
       align: 'center',
       setOrigin: 0.5
     }).setScrollFactor(0);
+
+    if (this.multiplayer) {
+      this.spectateText = this.add.text(400, 16, '', {
+        fontSize: '18px',
+        fill: '#ffcc66',
+        align: 'center',
+        backgroundColor: '#000000aa',
+        padding: { x: 8, y: 4 }
+      }).setOrigin(0.5, 0).setScrollFactor(0).setVisible(false);
+
+      this.leaveSessionText = this.add.text(400, 50, 'Leave session', {
+        fontSize: '16px',
+        fill: '#ff8888'
+      }).setOrigin(0.5, 0).setScrollFactor(0).setVisible(false)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.leaveSession());
+
+      this.gameOverButtons = this.add.container(400, 380).setScrollFactor(0).setVisible(false);
+      const newGameText = this.makeMenuButton(-90, 0, 'New Game', '#66ccff', () => this.requestNewGame());
+      const endSessionText = this.makeMenuButton(90, 0, 'End Session', '#ff8888', () => this.leaveSession());
+      this.gameOverButtons.add([newGameText, endSessionText]);
+    }
+  }
+
+  makeMenuButton(x, y, label, color, onClick) {
+    const text = this.add.text(x, y, label, {
+      fontSize: '22px',
+      fill: color
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    text.on('pointerover', () => text.setScale(1.1));
+    text.on('pointerout', () => text.setScale(1));
+    text.on('pointerdown', onClick);
+
+    return text;
   }
 
   update() {
-    if (this.gameOver) return;
+    if (this.gameOver) {
+      if (this.multiplayer) this.updateMultiplayer();
+      return;
+    }
+    if (this.spectating) this.updateSpectateCamera();
 
     if (this.grenadeThrowCooldown > 0) {
       this.grenadeThrowCooldown -= 1000 / 60;
     }
 
-    if (this.activeTank) {
+    if (this.spectating) {
+      // fall through to the shared-world update below, skipping only the
+      // local-player input/movement block
+    } else if (this.activeTank) {
       // Driving: route movement/shooting to the tank, hide the soldier
       const keys = {
         up: this.cursors.up.isDown || this.tankKeys.up.isDown,
@@ -241,10 +346,17 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // Update enemies
+    if (this.localNameText) {
+      this.localNameText.setVisible(!this.spectating);
+      this.localNameText.setPosition(this.player.sprite.x, this.player.sprite.y - 30);
+    }
+
+    // Update enemies (host, once its own player has died, points AI at a
+    // living remote player instead of the dead/hidden local sprite)
+    const aiTarget = this.enemyAiTargetSprite || this.player.sprite;
     this.enemies.children.entries.forEach(enemySprite => {
       if (enemySprite.enemyInstance) {
-        enemySprite.enemyInstance.update(this.player.sprite);
+        enemySprite.enemyInstance.update(aiTarget);
       }
     });
 
@@ -271,11 +383,14 @@ export default class GameScene extends Phaser.Scene {
     // Update turrets
     this.turretInstances.forEach(turret => turret.update());
 
-    // Check wave completion
-    if (this.enemies.countActive() === 0) {
+    // Check wave completion (host-authoritative in multiplayer; non-host
+    // clients get their wave number from enemy-state broadcasts instead)
+    if ((!this.multiplayer || this.isHost) && this.enemies.countActive() === 0) {
       this.wave++;
       this.spawnWave();
     }
+
+    if (this.multiplayer) this.updateMultiplayer();
 
     // Update UI
     this.scoreText.setText(`Score: ${this.score}`);
@@ -283,13 +398,39 @@ export default class GameScene extends Phaser.Scene {
     this.turretText.setText(`Turrets: ${this.turretInstances.length}/${this.maxTurrets}`);
 
     if (this.activeTank) {
-      this.healthText.setText(`Tank Health: ${this.activeTank.health}/${this.activeTank.maxHealth}`);
-      this.weaponText.setText('Driving Tank');
+      const tank = this.activeTank;
+      this.healthText.setText(`Tank Health: ${tank.health}/${tank.maxHealth}`);
+      this.weaponText.setText(this.activeTank.mode === 'mech' ? 'Driving Mech' : 'Driving Tank');
+
+      const shellStatus = tank.shellReloading
+        ? 'Cannon: reloading...'
+        : `Cannon: ${tank.shellAmmo}/${tank.shellMagSize} (${tank.shellReserve} reloads)`;
+      const mgStatus = tank.mgReloading
+        ? 'MG: reloading...'
+        : `MG: ${tank.mgAmmo}/${tank.mgMagSize} (${tank.mgReserve} reloads)`;
+      this.ammoStatusText.setText(`${shellStatus}   ${mgStatus}   R: reload`);
+
+      this.heatBarBg.setVisible(false);
+      this.heatBarFill.setVisible(false);
     } else {
       this.healthText.setText(`Health: ${this.player.health}`);
       const weapon = Player.WEAPONS[this.player.weaponKey];
-      const ammoText = this.player.ammo === Infinity ? '' : ` (${this.player.ammo})`;
-      this.weaponText.setText(`Weapon: ${weapon.label}${ammoText}`);
+      const ammoText = this.player.magAmmo === Infinity ? 'Unlimited' :
+        `${this.player.magAmmo}/${this.player.magSize} (${this.player.reserveMags} reloads)`;
+      this.weaponText.setText(`Weapon: ${weapon.label}`);
+
+      let status = ammoText;
+      if (this.player.reloading) status += '  Reloading...';
+      else if (this.player.overheated) status += '  OVERHEATED';
+      if (this.player.magSize !== Infinity) status += '   R: reload';
+      this.ammoStatusText.setText(status);
+
+      this.heatBarBg.setVisible(true);
+      this.heatBarFill.setVisible(true);
+      const pct = this.player.heat / this.player.maxHeat;
+      this.heatBarFill.width = (this.heatBarWidth - 2) * pct;
+      const color = this.player.overheated ? 0xff3333 : pct > 0.7 ? 0xffaa33 : 0x66ff66;
+      this.heatBarFill.setFillStyle(color);
     }
   }
 
@@ -480,6 +621,12 @@ export default class GameScene extends Phaser.Scene {
   handleTurretBulletEnemyCollision(bulletSprite, enemySprite) {
     const enemy = enemySprite.enemyInstance;
     bulletSprite.destroy();
+
+    if (this.multiplayer && !this.isHost) {
+      this.net.send('damage-event', { enemyId: enemy.netId, amount: 1 });
+      return;
+    }
+
     enemy.takeDamage(1);
 
     if (enemy.health <= 0) {
@@ -488,11 +635,17 @@ export default class GameScene extends Phaser.Scene {
   }
 
   spawnWave() {
-    const enemyCount = (5 + this.wave * 2) * 10;
+    const zombieMode = this.registry.get('zombieMode');
+    const baseCount = (5 + this.wave * 2) * 10;
+    const enemyCount = zombieMode ? baseCount * 10 : baseCount;
+
     for (let i = 0; i < enemyCount; i++) {
       const x = Phaser.Math.Between(50, WORLD_WIDTH - 50);
       const y = Phaser.Math.Between(50, WORLD_HEIGHT - 50);
-      new Enemy(this, x, y, this.wave);
+      const enemy = new Enemy(this, x, y, this.wave, zombieMode);
+      if (this.multiplayer && this.isHost) {
+        enemy.netId = `${this.wave}-${i}-${Math.floor(Math.random() * 1e6)}`;
+      }
     }
   }
 
@@ -514,6 +667,14 @@ export default class GameScene extends Phaser.Scene {
 
     const enemy = enemySprite.enemyInstance;
     projectileSprite.destroy();
+
+    // Non-host: this enemy is only a visual-only stand-in driven by the
+    // host's broadcasts, so don't apply damage locally — tell the host.
+    if (this.multiplayer && !this.isHost) {
+      this.net.send('damage-event', { enemyId: enemy.netId, amount: 1 });
+      return;
+    }
+
     enemy.takeDamage(1);
 
     if (enemy.health <= 0) {
@@ -532,6 +693,12 @@ export default class GameScene extends Phaser.Scene {
       const dist = Phaser.Math.Distance.Between(x, y, enemySprite.x, enemySprite.y);
       if (dist <= splashRadius && enemySprite.enemyInstance) {
         const enemy = enemySprite.enemyInstance;
+
+        if (this.multiplayer && !this.isHost) {
+          this.net.send('damage-event', { enemyId: enemy.netId, amount: splashDamage });
+          return;
+        }
+
         enemy.takeDamage(splashDamage);
         if (enemy.health <= 0) {
           this.killEnemy(enemy, enemySprite);
@@ -544,9 +711,14 @@ export default class GameScene extends Phaser.Scene {
 
   killEnemy(enemy, enemySprite) {
     this.createExplosion(enemySprite.x, enemySprite.y);
-    new DeadBody(this, enemySprite.x, enemySprite.y, enemySprite.flipX);
+    new DeadBody(this, enemySprite.x, enemySprite.y, enemySprite.flipX, enemy.zombie);
     const dropX = enemySprite.x;
     const dropY = enemySprite.y;
+
+    if (this.multiplayer && this.isHost && enemy.netId) {
+      this.net.send('enemy-died', { enemyId: enemy.netId });
+    }
+
     enemy.destroy();
     this.score += 10 * this.wave;
     this.enemiesKilled++;
@@ -576,7 +748,11 @@ export default class GameScene extends Phaser.Scene {
     this.createExplosion(this.player.sprite.x, this.player.sprite.y);
 
     if (this.player.health <= 0) {
-      this.endGame();
+      if (this.multiplayer) {
+        this.enterSpectate();
+      } else {
+        this.endGame();
+      }
     }
   }
 
@@ -660,5 +836,258 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(3000, () => {
       this.scene.start('MenuScene');
     });
+  }
+
+  // Multiplayer death: the local player keeps watching the live session
+  // (camera follows a living remote player) instead of the scene freezing.
+  enterSpectate() {
+    if (this.spectating) return;
+    this.spectating = true;
+
+    this.player.sprite.setVisible(false);
+    this.player.gunSprite.setVisible(false);
+    this.player.sprite.body.enable = false;
+
+    this.spectateText.setText('You died — Spectating').setVisible(true);
+    this.leaveSessionText.setVisible(true);
+
+    this.net.send('player-died', {});
+
+    if (this.isHost) {
+      this.deadPlayerIds.add(this.net.id);
+      this.retargetHostEnemies();
+      this.checkAllPlayersDead();
+    }
+  }
+
+  // Picks a living remote player (if any) for the camera to follow, and for
+  // host-owned enemies to chase in place of the now-dead local player.
+  findLivingRemotePlayer() {
+    for (const remote of this.remotePlayers.values()) {
+      if (!remote.dead) return remote;
+    }
+    return null;
+  }
+
+  updateSpectateCamera() {
+    const target = this.findLivingRemotePlayer();
+    if (target && this.cameras.main._follow !== target.sprite) {
+      this.cameras.main.startFollow(target.sprite, true, 0.1, 0.1);
+    } else if (!target) {
+      this.cameras.main.stopFollow();
+    }
+  }
+
+  // Host-only: point enemy AI at a living remote player's sprite once the
+  // host's own player has died, so enemies don't chase a dead/hidden sprite.
+  retargetHostEnemies() {
+    const target = this.findLivingRemotePlayer();
+    this.enemyAiTargetSprite = target ? target.sprite : this.player.sprite;
+  }
+
+  checkAllPlayersDead() {
+    if (!this.isHost || this.gameOver) return;
+    const totalPlayers = this.remotePlayers.size + 1;
+    if (this.deadPlayerIds.size >= totalPlayers) {
+      this.showGameOver();
+    }
+  }
+
+  // Host computes and broadcasts the shared game-over; every client
+  // (including the host itself) renders the same summary/buttons.
+  showGameOver() {
+    this.net.send('game-over', { wave: this.wave, score: this.score });
+    this.applyGameOver({ wave: this.wave, score: this.score });
+  }
+
+  applyGameOver({ wave, score }) {
+    if (this.gameOver) return;
+    this.gameOver = true;
+    this.physics.pause();
+
+    const bonusCoins = Math.floor(Math.floor(score / 2) / 10);
+    addCoins(bonusCoins);
+
+    this.spectateText.setVisible(false);
+    this.leaveSessionText.setVisible(false);
+    this.gameOverText.setText(`GAME OVER\nWave: ${wave}\nAll players down`);
+    this.gameOverText.setOrigin(0.5, 0.5);
+    this.gameOverButtons.setVisible(true);
+  }
+
+  requestNewGame() {
+    if (this.isHost) {
+      this.net.send('new-game', {});
+      this.applyNewGame();
+    }
+    // Non-host: wait for the host's new-game broadcast rather than resetting
+    // unilaterally, since only the host actually restarts the shared wave/enemy state.
+  }
+
+  applyNewGame() {
+    this.scene.restart({ multiplayer: true });
+  }
+
+  leaveSession() {
+    if (this.net) this.net.disconnect();
+    this.scene.start('MenuScene');
+  }
+
+  setupMultiplayer() {
+    const net = this.net;
+    net.removeAllListeners();
+
+    net.players.forEach(p => {
+      if (p.id !== net.id) this.addRemotePlayer(p.id, p.color, p.name);
+    });
+
+    net.on('player-joined', (msg) => this.addRemotePlayer(msg.id, msg.color, msg.name));
+
+    net.on('player-left', (msg) => {
+      const remote = this.remotePlayers.get(msg.id);
+      if (remote) {
+        remote.destroy();
+        this.remotePlayers.delete(msg.id);
+      }
+      if (this.isHost) {
+        this.deadPlayerIds.delete(msg.id);
+        this.checkAllPlayersDead();
+      }
+    });
+
+    net.on('player-state', (msg) => {
+      const remote = this.remotePlayers.get(msg.id);
+      if (remote) remote.applyState(msg);
+    });
+
+    net.on('player-died', (msg) => {
+      const remote = this.remotePlayers.get(msg.id);
+      if (remote) remote.markDead();
+      if (this.spectating) this.updateSpectateCamera();
+
+      if (this.isHost) {
+        this.deadPlayerIds.add(msg.id);
+        this.retargetHostEnemies();
+        this.checkAllPlayersDead();
+      }
+    });
+
+    net.on('game-over', (msg) => this.applyGameOver(msg));
+    net.on('new-game', () => this.applyNewGame());
+
+    net.on('host-left', () => {
+      if (this.gameOver) return;
+      this.gameOver = true;
+      this.physics.pause();
+      this.gameOverText.setText('HOST LEFT\nReturning to menu...');
+      this.gameOverText.setOrigin(0.5, 0.5);
+      this.time.delayedCall(2000, () => this.scene.start('MenuScene'));
+    });
+
+    net.on('disconnected', () => {
+      if (this.gameOver) return;
+      this.mpDisconnected = true;
+    });
+
+    if (!this.isHost) {
+      net.on('enemy-state', (msg) => this.applyEnemyState(msg));
+      net.on('enemy-died', (msg) => this.applyEnemyDeath(msg.enemyId));
+    } else {
+      net.on('damage-event', (msg) => this.applyHostDamageEvent(msg));
+    }
+  }
+
+  addRemotePlayer(id, color, name) {
+    if (this.remotePlayers.has(id)) return;
+    const remote = new RemotePlayer(this, this.player.sprite.x, this.player.sprite.y, color, name);
+    this.remotePlayers.set(id, remote);
+  }
+
+  // Non-host only: replace/refresh the visual-only enemy roster from the
+  // host's broadcast. Enemies not present in the message are left alone
+  // (they're removed explicitly via enemy-died) to avoid churn every tick.
+  applyEnemyState(msg) {
+    this.wave = msg.wave;
+
+    const seen = new Set();
+    msg.enemies.forEach(state => {
+      seen.add(state.id);
+      let enemy = this.remoteEnemiesById.get(state.id);
+      if (!enemy) {
+        enemy = new Enemy(this, state.x, state.y, this.wave, state.zombie, true);
+        enemy.netId = state.id;
+        this.remoteEnemiesById.set(state.id, enemy);
+      }
+      enemy.applyRemoteState(state);
+    });
+  }
+
+  applyEnemyDeath(enemyId) {
+    const enemy = this.remoteEnemiesById.get(enemyId);
+    if (!enemy) return;
+    this.createExplosion(enemy.sprite.x, enemy.sprite.y);
+    enemy.destroy();
+    this.remoteEnemiesById.delete(enemyId);
+  }
+
+  // Host only: a non-host client's projectile hit one of our real enemies.
+  applyHostDamageEvent(msg) {
+    const sprite = this.enemies.children.entries.find(
+      s => s.enemyInstance && s.enemyInstance.netId === msg.enemyId
+    );
+    if (!sprite) return;
+
+    const enemy = sprite.enemyInstance;
+    enemy.takeDamage(msg.amount);
+    if (enemy.health <= 0) {
+      this.killEnemy(enemy, sprite);
+    }
+    // Health change reaches other clients via the regular enemy-state tick.
+  }
+
+  updateMultiplayer() {
+    const dt = 1000 / 60;
+
+    this.playerStateTimer -= dt;
+    if (this.playerStateTimer <= 0) {
+      this.playerStateTimer = PLAYER_STATE_INTERVAL;
+      this.broadcastPlayerState();
+    }
+
+    if (this.isHost) {
+      this.enemyStateTimer -= dt;
+      if (this.enemyStateTimer <= 0) {
+        this.enemyStateTimer = ENEMY_STATE_INTERVAL;
+        this.broadcastEnemyState();
+      }
+    }
+
+    this.remotePlayers.forEach(remote => remote.update());
+  }
+
+  broadcastPlayerState() {
+    const body = this.player.sprite.body;
+    const moving = Math.abs(body.velocity.x) > 5 || Math.abs(body.velocity.y) > 5;
+
+    this.net.send('player-state', {
+      x: this.player.sprite.x,
+      y: this.player.sprite.y,
+      rotation: this.player.targetAngle,
+      weaponKey: this.player.weaponKey,
+      flipX: this.player.sprite.flipX,
+      health: this.player.health,
+      moving
+    });
+  }
+
+  broadcastEnemyState() {
+    const enemies = this.enemies.children.entries
+      .filter(s => s.enemyInstance && s.enemyInstance.netId)
+      .map(s => {
+        const e = s.enemyInstance;
+        return { id: e.netId, x: s.x, y: s.y, rotation: e.gunSprite ? e.gunSprite.rotation : 0, health: e.health, zombie: e.zombie };
+      });
+
+    this.net.send('enemy-state', { wave: this.wave, enemies });
   }
 }

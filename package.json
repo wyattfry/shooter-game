@@ -1,0 +1,17 @@
+{
+  "name": "phaser-shooter",
+  "version": "1.0.0",
+  "description": "A 2D top-down shooter game with Phaser",
+  "main": "index.js",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.55.2"
+  },
+  "devDependencies": {
+    "vite": "^4.5.0"
+  }
+}

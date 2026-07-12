@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { playShoot } from '../sound/SoundManager.js';
+import Projectile from './Projectile.js';
 
 export default class Enemy {
   // visualOnly: driven by host enemy-state broadcasts on non-host multiplayer
@@ -626,17 +627,9 @@ export default class Enemy {
     return { x: ax, y: ay };
   }
 
-  static ensureBulletTexture(scene, gunKey) {
-    const bulletKey = `enemyBulletTexture-${gunKey}`;
-    if (scene.textures.exists(bulletKey)) return bulletKey;
-
-    const gunType = Enemy.GUN_TYPES.find(g => g.key === gunKey);
-    const graphics = scene.make.graphics({ x: 0, y: 0, add: false });
-    graphics.fillStyle(gunType.color);
-    graphics.fillRect(0, 0, 8, 8);
-    graphics.generateTexture(bulletKey, 8, 8);
-    graphics.destroy();
-    return bulletKey;
+  static ensureBulletTexture(scene) {
+    Projectile.ensureTexture(scene);
+    return 'bulletTexture';
   }
 
   shootAtPlayer(playerSprite) {
@@ -647,7 +640,7 @@ export default class Enemy {
       playerSprite.y
     );
 
-    const bulletKey = Enemy.ensureBulletTexture(this.scene, this.gunType.key);
+    const bulletKey = Enemy.ensureBulletTexture(this.scene);
 
     const pelletCount = this.gunType.key === 'shotgun' ? 3 : 1;
     const spreadStep = this.gunType.key === 'shotgun' ? 0.15 : 0;
@@ -659,6 +652,9 @@ export default class Enemy {
       const by = this.gunSprite.y + Math.sin(angle) * this.gunType.width;
 
       const bullet = this.scene.physics.add.sprite(bx, by, bulletKey);
+      bullet.setDisplaySize(14, 4);
+      bullet.setTint(this.gunType.color);
+      bullet.rotation = pelletAngle;
       bullet.body.setVelocity(
         Math.cos(pelletAngle) * this.gunType.bulletSpeed,
         Math.sin(pelletAngle) * this.gunType.bulletSpeed
@@ -673,7 +669,7 @@ export default class Enemy {
       }
     }
 
-    playShoot(this.scene, { volume: 0.12 });
+    playShoot(this.scene, { volume: 0.12, key: 'shoot-a' });
   }
 
   registerBulletCollision(bullet) {

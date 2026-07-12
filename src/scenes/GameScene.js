@@ -14,7 +14,7 @@ import RocketProjectile from '../entities/RocketProjectile.js';
 import { addCoins, getPlayerName } from '../progress.js';
 import CoinCounter from '../ui/CoinCounter.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
-import { preloadSounds, playExplosion, playHurt, playLose } from '../sound/SoundManager.js';
+import { preloadSounds, playExplosion, playHurt, playLose, playChestOpen, playCoin } from '../sound/SoundManager.js';
 
 const WORLD_WIDTH = 6400;
 const WORLD_HEIGHT = 4800;
@@ -853,12 +853,15 @@ export default class GameScene extends Phaser.Scene {
       this.player.rapidFireTime = 5000;
     }
 
+    playCoin(this);
     powerUp.destroy();
   }
 
   handleChestCollision(playerSprite, chestSprite) {
     const chest = chestSprite.chestInstance;
     const reward = chest.open();
+    if (!reward) return;
+    playChestOpen(this);
 
     if (reward === 'health') {
       this.player.health = Math.min(this.player.health + 1, this.player.maxHealth);
@@ -1145,9 +1148,13 @@ export default class GameScene extends Phaser.Scene {
   // Host-authoritative enemy fire, spawned as a real colliding bullet on
   // every client (including the host) so any player can take enemy damage.
   spawnEnemyBullet({ x, y, angle, speed, gunKey }) {
-    const bulletKey = Enemy.ensureBulletTexture(this, gunKey);
+    const bulletKey = Enemy.ensureBulletTexture(this);
+    const gunType = Enemy.GUN_TYPES.find(g => g.key === gunKey);
 
     const bullet = this.physics.add.sprite(x, y, bulletKey);
+    bullet.setDisplaySize(14, 4);
+    if (gunType) bullet.setTint(gunType.color);
+    bullet.rotation = angle;
     bullet.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
 
     this.physics.add.overlap(bullet, this.player.sprite, () => {

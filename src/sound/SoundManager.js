@@ -33,7 +33,9 @@ function playVariant(scene, category, config) {
 }
 
 export function playShoot(scene, config) {
-  playVariant(scene, 'shoot', { volume: 0.35, ...config });
+  const { key, rate, ...rest } = config || {};
+  const pitch = rate ?? Phaser.Math.FloatBetween(0.92, 1.08);
+  playKey(scene, key || VARIANTS.shoot[0], { volume: 0.35, rate: pitch, ...rest });
 }
 
 export function playExplosion(scene, config) {
@@ -58,4 +60,14 @@ export function playSelect(scene, config) {
 
 export function playError(scene, config) {
   playKey(scene, SINGLES.error, { volume: 0.4, ...config });
+}
+
+export function playMove(scene, config) {
+  const { rate, ...rest } = config || {};
+  const pitch = rate ?? Phaser.Math.FloatBetween(0.9, 1.1);
+  playKey(scene, SINGLES.move, { volume: 0.12, rate: pitch, ...rest });
+}
+
+export function playChestOpen(scene, config) {
+  playVariant(scene, 'coin', { volume: 0.55, ...config });
 }

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import Projectile from './Projectile.js';
 import RocketProjectile from './RocketProjectile.js';
-import { playShoot } from '../sound/SoundManager.js';
+import { playShoot, playMove } from '../sound/SoundManager.js';
 
 export default class Player {
   // magSize/maxMags are [min, max] ranges: each weapon rolls a random
@@ -9,43 +9,43 @@ export default class Player {
   // when equipped, so the same gun can carry a different total each run.
   static get WEAPONS() {
     return {
-      m4a1: { texture: 'gun-m4a1', width: 33, height: 12, fireDelay: 50, rapidFireDelay: 30, pellets: 1, magSize: null, maxMags: null, overheatSeconds: 5, range: 700, label: 'M4A1' },
-      saw: { texture: 'gun-saw', width: 38, height: 14, fireDelay: 60, rapidFireDelay: 35, pellets: 1, magSize: [60, 100], maxMags: [2, 4], range: 750, label: 'M249 SAW' },
-      'm4-upgrade': { texture: 'gun-m4-upgrade', width: 34, height: 13, fireDelay: 70, rapidFireDelay: 40, pellets: 1, magSize: [25, 35], maxMags: [3, 6], range: 720, label: 'M4A1 (Upgraded)' },
-      rocket: { texture: 'gun-rocket', width: 34, height: 14, fireDelay: 800, rapidFireDelay: 700, pellets: 1, magSize: [1, 1], maxMags: [3, 6], range: 1400, label: 'Rocket Launcher', isRocket: true },
+      m4a1: { texture: 'gun-m4a1', width: 33, height: 12, fireDelay: 50, rapidFireDelay: 30, pellets: 1, magSize: null, maxMags: null, overheatSeconds: 5, range: 700, label: 'M4A1', sound: 'shoot-h' },
+      saw: { texture: 'gun-saw', width: 38, height: 14, fireDelay: 60, rapidFireDelay: 35, pellets: 1, magSize: [60, 100], maxMags: [2, 4], range: 750, label: 'M249 SAW', sound: 'shoot-h' },
+      'm4-upgrade': { texture: 'gun-m4-upgrade', width: 34, height: 13, fireDelay: 70, rapidFireDelay: 40, pellets: 1, magSize: [25, 35], maxMags: [3, 6], range: 720, label: 'M4A1 (Upgraded)', sound: 'shoot-h' },
+      rocket: { texture: 'gun-rocket', width: 34, height: 14, fireDelay: 800, rapidFireDelay: 700, pellets: 1, magSize: [1, 1], maxMags: [3, 6], range: 1400, label: 'Rocket Launcher', isRocket: true, sound: 'shoot-g' },
 
-      glock17: { texture: 'gun-glock17', width: 18, height: 11, fireDelay: 180, rapidFireDelay: 110, pellets: 1, magSize: [15, 20], maxMags: [3, 8], range: 380, label: 'Glock 17' },
-      m1911: { texture: 'gun-m1911', width: 19, height: 11, fireDelay: 220, rapidFireDelay: 140, pellets: 1, magSize: [7, 10], maxMags: [3, 8], range: 400, label: 'M1911' },
-      deagle: { texture: 'gun-deagle', width: 21, height: 12, fireDelay: 300, rapidFireDelay: 190, pellets: 1, magSize: [7, 9], maxMags: [2, 6], range: 450, label: 'Desert Eagle' },
+      glock17: { texture: 'gun-glock17', width: 18, height: 11, fireDelay: 180, rapidFireDelay: 110, pellets: 1, magSize: [15, 20], maxMags: [3, 8], range: 380, label: 'Glock 17', sound: 'shoot-a' },
+      m1911: { texture: 'gun-m1911', width: 19, height: 11, fireDelay: 220, rapidFireDelay: 140, pellets: 1, magSize: [7, 10], maxMags: [3, 8], range: 400, label: 'M1911', sound: 'shoot-a' },
+      deagle: { texture: 'gun-deagle', width: 21, height: 12, fireDelay: 300, rapidFireDelay: 190, pellets: 1, magSize: [7, 9], maxMags: [2, 6], range: 450, label: 'Desert Eagle', sound: 'shoot-a' },
 
-      uzi: { texture: 'gun-uzi', width: 22, height: 13, fireDelay: 65, rapidFireDelay: 40, pellets: 1, magSize: [25, 32], maxMags: [3, 7], range: 420, label: 'Uzi' },
-      mp5: { texture: 'gun-mp5', width: 25, height: 12, fireDelay: 75, rapidFireDelay: 45, pellets: 1, magSize: [25, 30], maxMags: [3, 7], range: 480, label: 'MP5' },
-      ump45: { texture: 'gun-ump45', width: 26, height: 13, fireDelay: 90, rapidFireDelay: 55, pellets: 1, magSize: [20, 25], maxMags: [3, 6], range: 500, label: 'UMP45' },
-      p90: { texture: 'gun-p90', width: 27, height: 14, fireDelay: 55, rapidFireDelay: 32, pellets: 1, magSize: [45, 50], maxMags: [2, 5], range: 460, label: 'P90' },
-      vector: { texture: 'gun-vector', width: 24, height: 13, fireDelay: 45, rapidFireDelay: 25, pellets: 1, magSize: [25, 33], maxMags: [3, 6], range: 420, label: 'Vector' },
+      uzi: { texture: 'gun-uzi', width: 22, height: 13, fireDelay: 65, rapidFireDelay: 40, pellets: 1, magSize: [25, 32], maxMags: [3, 7], range: 420, label: 'Uzi', sound: 'shoot-b' },
+      mp5: { texture: 'gun-mp5', width: 25, height: 12, fireDelay: 75, rapidFireDelay: 45, pellets: 1, magSize: [25, 30], maxMags: [3, 7], range: 480, label: 'MP5', sound: 'shoot-b' },
+      ump45: { texture: 'gun-ump45', width: 26, height: 13, fireDelay: 90, rapidFireDelay: 55, pellets: 1, magSize: [20, 25], maxMags: [3, 6], range: 500, label: 'UMP45', sound: 'shoot-b' },
+      p90: { texture: 'gun-p90', width: 27, height: 14, fireDelay: 55, rapidFireDelay: 32, pellets: 1, magSize: [45, 50], maxMags: [2, 5], range: 460, label: 'P90', sound: 'shoot-b' },
+      vector: { texture: 'gun-vector', width: 24, height: 13, fireDelay: 45, rapidFireDelay: 25, pellets: 1, magSize: [25, 33], maxMags: [3, 6], range: 420, label: 'Vector', sound: 'shoot-b' },
 
-      ak47: { texture: 'gun-ak47', width: 34, height: 13, fireDelay: 100, rapidFireDelay: 60, pellets: 1, magSize: [25, 30], maxMags: [3, 7], range: 700, label: 'AK-47' },
-      akm: { texture: 'gun-akm', width: 34, height: 13, fireDelay: 95, rapidFireDelay: 58, pellets: 1, magSize: [25, 30], maxMags: [3, 7], range: 700, label: 'AKM' },
-      famas: { texture: 'gun-famas', width: 30, height: 13, fireDelay: 65, rapidFireDelay: 38, pellets: 1, magSize: [20, 25], maxMags: [3, 6], range: 680, label: 'FAMAS' },
-      g36: { texture: 'gun-g36', width: 32, height: 14, fireDelay: 85, rapidFireDelay: 50, pellets: 1, magSize: [25, 30], maxMags: [3, 6], range: 720, label: 'G36' },
-      aug: { texture: 'gun-aug', width: 29, height: 14, fireDelay: 80, rapidFireDelay: 48, pellets: 1, magSize: [24, 30], maxMags: [3, 6], range: 700, label: 'Steyr AUG' },
+      ak47: { texture: 'gun-ak47', width: 34, height: 13, fireDelay: 100, rapidFireDelay: 60, pellets: 1, magSize: [25, 30], maxMags: [3, 7], range: 700, label: 'AK-47', sound: 'shoot-c' },
+      akm: { texture: 'gun-akm', width: 34, height: 13, fireDelay: 95, rapidFireDelay: 58, pellets: 1, magSize: [25, 30], maxMags: [3, 7], range: 700, label: 'AKM', sound: 'shoot-c' },
+      famas: { texture: 'gun-famas', width: 30, height: 13, fireDelay: 65, rapidFireDelay: 38, pellets: 1, magSize: [20, 25], maxMags: [3, 6], range: 680, label: 'FAMAS', sound: 'shoot-c' },
+      g36: { texture: 'gun-g36', width: 32, height: 14, fireDelay: 85, rapidFireDelay: 50, pellets: 1, magSize: [25, 30], maxMags: [3, 6], range: 720, label: 'G36', sound: 'shoot-c' },
+      aug: { texture: 'gun-aug', width: 29, height: 14, fireDelay: 80, rapidFireDelay: 48, pellets: 1, magSize: [24, 30], maxMags: [3, 6], range: 700, label: 'Steyr AUG', sound: 'shoot-c' },
 
-      scarh: { texture: 'gun-scarh', width: 35, height: 14, fireDelay: 130, rapidFireDelay: 80, pellets: 1, magSize: [16, 20], maxMags: [3, 6], range: 850, label: 'SCAR-H' },
-      svd: { texture: 'gun-svd', width: 38, height: 13, fireDelay: 260, rapidFireDelay: 180, pellets: 1, magSize: [8, 10], maxMags: [2, 5], range: 1100, label: 'Dragunov SVD' },
-      barrett: { texture: 'gun-barrett', width: 42, height: 14, fireDelay: 600, rapidFireDelay: 450, pellets: 1, magSize: [5, 10], maxMags: [1, 3], range: 1300, label: 'Barrett M82' },
+      scarh: { texture: 'gun-scarh', width: 35, height: 14, fireDelay: 130, rapidFireDelay: 80, pellets: 1, magSize: [16, 20], maxMags: [3, 6], range: 850, label: 'SCAR-H', sound: 'shoot-d' },
+      svd: { texture: 'gun-svd', width: 38, height: 13, fireDelay: 260, rapidFireDelay: 180, pellets: 1, magSize: [8, 10], maxMags: [2, 5], range: 1100, label: 'Dragunov SVD', sound: 'shoot-d' },
+      barrett: { texture: 'gun-barrett', width: 42, height: 14, fireDelay: 600, rapidFireDelay: 450, pellets: 1, magSize: [5, 10], maxMags: [1, 3], range: 1300, label: 'Barrett M82', sound: 'shoot-d' },
 
-      remington870: { texture: 'gun-remington870', width: 32, height: 12, fireDelay: 500, rapidFireDelay: 380, pellets: 8, magSize: [6, 8], maxMags: [2, 5], range: 320, label: 'Remington 870' },
-      aa12: { texture: 'gun-aa12', width: 30, height: 13, fireDelay: 220, rapidFireDelay: 150, pellets: 6, magSize: [8, 12], maxMags: [2, 5], range: 340, label: 'AA-12' },
+      remington870: { texture: 'gun-remington870', width: 32, height: 12, fireDelay: 500, rapidFireDelay: 380, pellets: 8, magSize: [6, 8], maxMags: [2, 5], range: 320, label: 'Remington 870', sound: 'shoot-e' },
+      aa12: { texture: 'gun-aa12', width: 30, height: 13, fireDelay: 220, rapidFireDelay: 150, pellets: 6, magSize: [8, 12], maxMags: [2, 5], range: 340, label: 'AA-12', sound: 'shoot-e' },
 
-      m240b: { texture: 'gun-m240b', width: 40, height: 15, fireDelay: 55, rapidFireDelay: 32, pellets: 1, magSize: [80, 120], maxMags: [1, 3], range: 900, label: 'M240B' },
+      m240b: { texture: 'gun-m240b', width: 40, height: 15, fireDelay: 55, rapidFireDelay: 32, pellets: 1, magSize: [80, 120], maxMags: [1, 3], range: 900, label: 'M240B', sound: 'shoot-f' },
 
-      rpg7: { texture: 'gun-rpg7', width: 36, height: 13, fireDelay: 900, rapidFireDelay: 800, pellets: 1, magSize: [1, 1], maxMags: [1, 3], range: 1400, label: 'RPG-7', isRocket: true }
+      rpg7: { texture: 'gun-rpg7', width: 36, height: 13, fireDelay: 900, rapidFireDelay: 800, pellets: 1, magSize: [1, 1], maxMags: [1, 3], range: 1400, label: 'RPG-7', isRocket: true, sound: 'shoot-g' }
     };
   }
 
   constructor(scene, x, y) {
     this.scene = scene;
-    this.speed = 300;
+    this.speed = 180;
     this.health = 3;
     this.maxHealth = 3;
     this.shootCooldown = 0;
@@ -679,9 +679,15 @@ export default class Player {
       if (!this.sprite.anims.isPlaying) {
         this.sprite.play('player-walk');
       }
+      this.stepTimer = (this.stepTimer || 0) - 1000 / 60;
+      if (this.stepTimer <= 0) {
+        playMove(this.scene);
+        this.stepTimer = 320;
+      }
     } else {
       this.sprite.anims.stop();
       this.sprite.setFrame(0);
+      this.stepTimer = 0;
     }
   }
 
@@ -825,7 +831,7 @@ export default class Player {
       new Projectile(this.scene, x, y, fireAngle, weapon.range);
     }
 
-    playShoot(this.scene);
+    playShoot(this.scene, { key: weapon.sound });
     if (this.onFire) this.onFire(x, y, angle, weapon.isRocket ? 'rocket' : 'bullet');
 
     if (this.magAmmo !== Infinity) {

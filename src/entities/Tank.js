@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { playShoot, playExplosion } from '../sound/SoundManager.js';
+import Projectile from './Projectile.js';
 
 export default class Tank {
   constructor(scene, x, y) {
@@ -537,13 +538,7 @@ export default class Tank {
 
     if (this.mgAmmo <= 0) this.reload();
 
-    if (!this.scene.textures.exists('tankMgBulletTexture')) {
-      const g = this.scene.make.graphics({ x: 0, y: 0, add: false });
-      g.fillStyle(0xffe066);
-      g.fillRect(0, 0, 6, 3);
-      g.generateTexture('tankMgBulletTexture', 6, 3);
-      g.destroy();
-    }
+    Projectile.ensureTexture(this.scene);
 
     const angle = this.turretSprite.rotation;
     const muzzleLength = 30;
@@ -554,14 +549,15 @@ export default class Tank {
     const bullet = this.scene.physics.add.sprite(
       this.turretSprite.x + Math.cos(angle) * muzzleLength + Math.cos(perpAngle) * mgOffset,
       this.turretSprite.y + Math.sin(angle) * muzzleLength + Math.sin(perpAngle) * mgOffset,
-      'tankMgBulletTexture'
+      'bulletTexture'
     );
+    bullet.setDisplaySize(14, 4);
     bullet.rotation = fireAngle;
 
     this.scene.turretBullets.add(bullet);
 
     bullet.body.setVelocity(Math.cos(fireAngle) * 550, Math.sin(fireAngle) * 550);
-    playShoot(this.scene, { volume: 0.2 });
+    playShoot(this.scene, { volume: 0.2, key: 'shoot-f' });
     if (this.onFire) this.onFire(bullet.x, bullet.y, fireAngle, 'bullet');
 
     this.scene.time.delayedCall(1500, () => {

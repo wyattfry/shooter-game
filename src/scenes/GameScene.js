@@ -10,6 +10,7 @@ import DeadBody from '../entities/DeadBody.js';
 import Chest from '../entities/Chest.js';
 import Tank from '../entities/Tank.js';
 import Grenade from '../entities/Grenade.js';
+import RocketProjectile from '../entities/RocketProjectile.js';
 import { addCoins, getPlayerName } from '../progress.js';
 import CoinCounter from '../ui/CoinCounter.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
@@ -85,6 +86,10 @@ export default class GameScene extends Phaser.Scene {
           padding: { x: 3, y: 1 }
         }
       ).setOrigin(0.5, 1);
+
+      this.player.onFire = (x, y, angle, kind) => {
+        this.net.send('bullet-fired', { x, y, angle, kind });
+      };
     }
 
     // Camera follows the player across the larger world
@@ -389,10 +394,20 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // Update projectiles (homing for rockets, cleanup once out of the world)
+    // Update projectiles (homing for rockets, cleanup once out of the world
+    // or, for regular bullets, once they've flown past their weapon's range)
     this.projectiles.children.entries.forEach(projectileSprite => {
       if (projectileSprite.rocketInstance) {
         projectileSprite.rocketInstance.update(1000 / 60, this.enemies);
+      }
+
+      const proj = projectileSprite.projectileInstance;
+      if (proj) {
+        const traveled = Phaser.Math.Distance.Between(proj.originX, proj.originY, projectileSprite.x, projectileSprite.y);
+        if (traveled >= proj.range) {
+          projectileSprite.destroy();
+          return;
+        }
       }
 
       if (projectileSprite.x < 0 || projectileSprite.x > WORLD_WIDTH ||
@@ -577,6 +592,10 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(throwDelay, () => {
       if (this.gameOver) return;
       new Grenade(this, origin.x, origin.y, targetX, targetY);
+      if (this.multiplayer) {
+        const angle = Phaser.Math.Angle.Between(origin.x, origin.y, targetX, targetY);
+        this.net.send('bullet-fired', { x: origin.x, y: origin.y, angle, kind: 'grenade' });
+      }
     });
   }
 
@@ -630,6 +649,9 @@ export default class GameScene extends Phaser.Scene {
     const y = this.player.sprite.y + Math.sin(angle) * 80;
 
     const tank = new Tank(this, x, y);
+    if (this.multiplayer) {
+      tank.onFire = (bx, by, angle, kind) => this.net.send('bullet-fired', { x: bx, y: by, angle, kind });
+    }
     this.tankInstances.push(tank);
   }
 
@@ -1059,9 +1081,83 @@ export default class GameScene extends Phaser.Scene {
     if (!this.isHost) {
       net.on('enemy-state', (msg) => this.applyEnemyState(msg));
       net.on('enemy-died', (msg) => this.applyEnemyDeath(msg.enemyId));
+      // Enemy bullets are host-authoritative but must actually collide on
+      // every client, since only the host runs real Enemy AI/damage.
+      net.on('enemy-bullet-fired', (msg) => this.spawnEnemyBullet(msg));
     } else {
       net.on('damage-event', (msg) => this.applyHostDamageEvent(msg));
     }
+
+    // Other players' shots are rendered here as visual-only (no collision;
+    // the firing client already resolved its own hits locally).
+    net.on('bullet-fired', (msg) => this.spawnRemoteBullet(msg));
+  }
+
+  spawnRemoteBullet(msg) {
+    if (msg.id === this.net.id) return;
+
+    const kindConfig = {
+      bullet: { texture: 'bulletTexture', size: [14, 4], speed: 500, life: 1400 },
+      rocket: { texture: 'rocketTexture', size: [14, 8], speed: 350, life: 3000 },
+      tankShell: { texture: 'tankShellTexture', size: [10, 6], speed: 500, life: 1400 },
+      grenade: { texture: 'grenadeTexture', size: [10, 10], speed: 300, life: 1200 }
+    };
+    const config = kindConfig[msg.kind] || kindConfig.bullet;
+
+    Projectile.ensureTexture(this);
+    RocketProjectile.ensureTexture(this);
+    Grenade.ensureTexture(this);
+    if (!this.textures.exists('tankShellTexture')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      g.fillStyle(0x888888);
+      g.fillRect(0, 0, 10, 6);
+      g.fillStyle(0xffcc00);
+      g.fillRect(0, 1, 3, 4);
+      g.generateTexture('tankShellTexture', 10, 6);
+      g.destroy();
+    }
+
+    const sprite = this.add.image(msg.x, msg.y, config.texture);
+    sprite.setDisplaySize(config.size[0], config.size[1]);
+    sprite.rotation = msg.angle;
+    sprite.setDepth(5);
+
+    const vx = Math.cos(msg.angle) * config.speed;
+    const vy = Math.sin(msg.angle) * config.speed;
+    const start = this.time.now;
+
+    const timer = this.time.addEvent({
+      delay: 16,
+      loop: true,
+      callback: () => {
+        const elapsed = this.time.now - start;
+        if (elapsed >= config.life || !sprite.active) {
+          sprite.destroy();
+          timer.remove();
+          return;
+        }
+        sprite.x += vx * (16 / 1000);
+        sprite.y += vy * (16 / 1000);
+      }
+    });
+  }
+
+  // Host-authoritative enemy fire, spawned as a real colliding bullet on
+  // every client (including the host) so any player can take enemy damage.
+  spawnEnemyBullet({ x, y, angle, speed, gunKey }) {
+    const bulletKey = Enemy.ensureBulletTexture(this, gunKey);
+
+    const bullet = this.physics.add.sprite(x, y, bulletKey);
+    bullet.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+
+    this.physics.add.overlap(bullet, this.player.sprite, () => {
+      bullet.destroy();
+      this.damagePlayerOrTank(1);
+    });
+
+    this.time.delayedCall(5000, () => {
+      if (bullet.active) bullet.destroy();
+    });
   }
 
   addRemotePlayer(id, color, name, isHost = false) {
@@ -1151,6 +1247,15 @@ export default class GameScene extends Phaser.Scene {
     const body = this.player.sprite.body;
     const moving = Math.abs(body.velocity.x) > 5 || Math.abs(body.velocity.y) > 5;
 
+    const vehicle = this.activeTank ? {
+      type: this.activeTank.mode,
+      x: this.activeTank.sprite.x,
+      y: this.activeTank.sprite.y,
+      rotation: this.activeTank.sprite.rotation,
+      turretRotation: this.activeTank.turretSprite.rotation,
+      health: this.activeTank.health
+    } : null;
+
     this.net.send('player-state', {
       x: this.player.sprite.x,
       y: this.player.sprite.y,
@@ -1158,7 +1263,8 @@ export default class GameScene extends Phaser.Scene {
       weaponKey: this.player.weaponKey,
       flipX: this.player.sprite.flipX,
       health: this.player.health,
-      moving
+      moving,
+      vehicle
     });
   }
 

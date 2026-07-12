@@ -31,11 +31,19 @@ clamps/defaults the name server-side too.
 - `start-game` — the host started the room; waiting clients enter together using the
   shared deterministic map seed. `{ type: 'start-game', mapSeed }`
 - `player-state` — relayed from another client's own `player-state` send (never echoed back to sender).
-  `{ type: 'player-state', id, x, y, rotation, weaponKey, animFrame, flipX, health }`
+  `{ type: 'player-state', id, x, y, rotation, weaponKey, flipX, health, moving, vehicle }`
+  `vehicle` is `null` when on foot, or `{ type: 'tank'|'mech', x, y, rotation, turretRotation, health }`
+  when driving — the remote player's own sprite is hidden and a tank/mech ghost is shown instead.
+- `bullet-fired` — relayed from another client's own `bullet-fired` send (never echoed back).
+  Visual-only on the receiving end — the firing client already resolved its own hits locally.
+  `{ type: 'bullet-fired', id, x, y, angle, kind }` (`kind`: `'bullet' | 'rocket' | 'tankShell' | 'grenade'`)
 - `enemy-state` — relayed from the host only, broadcast to all non-host clients.
   `{ type: 'enemy-state', wave, enemies: [{ id, x, y, rotation, health, zombie }] }`
 - `enemy-died` — relayed from the host only.
   `{ type: 'enemy-died', enemyId }`
+- `enemy-bullet-fired` — relayed from the host only; every client (including the host) spawns
+  a real, locally-colliding bullet from this so enemy fire can hit any player, not just the host.
+  `{ type: 'enemy-bullet-fired', x, y, angle, speed, gunKey }`
 - `damage-event` — relayed from a non-host client to the host only (not broadcast to the room).
   `{ type: 'damage-event', enemyId, amount, fromId }`
 - `player-died` — relayed from any client whose own player just died (they're now spectating).
@@ -50,11 +58,16 @@ clamps/defaults the name server-side too.
 - `start-game` — host-only lobby transition. Non-host attempts are ignored and the
   room rejects later connection attempts. `{ type: 'start-game' }`
 - `player-state` — sent by every client (host and non-host) at ~15-20Hz for their own player.
-  `{ type: 'player-state', x, y, rotation, weaponKey, animFrame, flipX, health }`
+  `{ type: 'player-state', x, y, rotation, weaponKey, flipX, health, moving, vehicle }`
+- `bullet-fired` — sent by every client when its own player fires a shot (any weapon type,
+  including thrown grenades and tank/mech weapons while driving).
+  `{ type: 'bullet-fired', x, y, angle, kind }`
 - `enemy-state` — sent by the host only, throttled (~100-150ms).
   `{ type: 'enemy-state', wave, enemies: [{ id, x, y, rotation, health, zombie }] }`
 - `enemy-died` — sent by the host only when it applies a real kill.
   `{ type: 'enemy-died', enemyId }`
+- `enemy-bullet-fired` — sent by the host only whenever one of its real enemies fires.
+  `{ type: 'enemy-bullet-fired', x, y, angle, speed, gunKey }`
 - `damage-event` — sent by a non-host client when its own projectile hits a visual-only enemy.
   `{ type: 'damage-event', enemyId, amount }`
 - `player-died` — sent by any client when its own player's health hits 0; it switches to

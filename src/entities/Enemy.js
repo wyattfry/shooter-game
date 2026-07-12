@@ -626,6 +626,19 @@ export default class Enemy {
     return { x: ax, y: ay };
   }
 
+  static ensureBulletTexture(scene, gunKey) {
+    const bulletKey = `enemyBulletTexture-${gunKey}`;
+    if (scene.textures.exists(bulletKey)) return bulletKey;
+
+    const gunType = Enemy.GUN_TYPES.find(g => g.key === gunKey);
+    const graphics = scene.make.graphics({ x: 0, y: 0, add: false });
+    graphics.fillStyle(gunType.color);
+    graphics.fillRect(0, 0, 8, 8);
+    graphics.generateTexture(bulletKey, 8, 8);
+    graphics.destroy();
+    return bulletKey;
+  }
+
   shootAtPlayer(playerSprite) {
     const angle = Phaser.Math.Angle.Between(
       this.sprite.x,
@@ -634,15 +647,7 @@ export default class Enemy {
       playerSprite.y
     );
 
-    // Create graphics for enemy bullet (colored per gun type)
-    const bulletKey = `enemyBulletTexture-${this.gunType.key}`;
-    if (!this.scene.textures.exists(bulletKey)) {
-      const graphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
-      graphics.fillStyle(this.gunType.color);
-      graphics.fillRect(0, 0, 8, 8);
-      graphics.generateTexture(bulletKey, 8, 8);
-      graphics.destroy();
-    }
+    const bulletKey = Enemy.ensureBulletTexture(this.scene, this.gunType.key);
 
     const pelletCount = this.gunType.key === 'shotgun' ? 3 : 1;
     const spreadStep = this.gunType.key === 'shotgun' ? 0.15 : 0;
@@ -650,17 +655,22 @@ export default class Enemy {
     for (let p = 0; p < pelletCount; p++) {
       const pelletAngle = angle + (p - (pelletCount - 1) / 2) * spreadStep;
 
-      const bullet = this.scene.physics.add.sprite(
-        this.gunSprite.x + Math.cos(angle) * this.gunType.width,
-        this.gunSprite.y + Math.sin(angle) * this.gunType.width,
-        bulletKey
-      );
+      const bx = this.gunSprite.x + Math.cos(angle) * this.gunType.width;
+      const by = this.gunSprite.y + Math.sin(angle) * this.gunType.width;
+
+      const bullet = this.scene.physics.add.sprite(bx, by, bulletKey);
       bullet.body.setVelocity(
         Math.cos(pelletAngle) * this.gunType.bulletSpeed,
         Math.sin(pelletAngle) * this.gunType.bulletSpeed
       );
 
       this.registerBulletCollision(bullet);
+
+      if (this.scene.multiplayer && this.scene.isHost) {
+        this.scene.net.send('enemy-bullet-fired', {
+          x: bx, y: by, angle: pelletAngle, speed: this.gunType.bulletSpeed, gunKey: this.gunType.key
+        });
+      }
     }
 
     playShoot(this.scene, { volume: 0.12 });

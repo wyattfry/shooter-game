@@ -527,6 +527,7 @@ export default class Tank {
 
     shell.body.setVelocity(Math.cos(angle) * 500, Math.sin(angle) * 500);
     playExplosion(this.scene, { volume: 0.25 });
+    if (this.onFire) this.onFire(shell.x, shell.y, angle, 'tankShell');
   }
 
   shootMachineGun() {
@@ -561,6 +562,7 @@ export default class Tank {
 
     bullet.body.setVelocity(Math.cos(fireAngle) * 550, Math.sin(fireAngle) * 550);
     playShoot(this.scene, { volume: 0.2 });
+    if (this.onFire) this.onFire(bullet.x, bullet.y, fireAngle, 'bullet');
 
     this.scene.time.delayedCall(1500, () => {
       if (bullet.active) bullet.destroy();

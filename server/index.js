@@ -131,6 +131,7 @@ wss.on('connection', (ws, req) => {
         break;
 
       case 'player-state':
+      case 'bullet-fired':
         broadcast(room, { ...msg, id }, id);
         break;
 
@@ -141,8 +142,9 @@ wss.on('connection', (ws, req) => {
       case 'enemy-died':
       case 'game-over':
       case 'new-game':
+      case 'enemy-bullet-fired':
         if (id === room.hostId) {
-          log(`room ${ws.roomCode}: ${msg.type} from host ${id}`);
+          if (msg.type !== 'enemy-bullet-fired') log(`room ${ws.roomCode}: ${msg.type} from host ${id}`);
           broadcast(room, msg, id);
         }
         break;

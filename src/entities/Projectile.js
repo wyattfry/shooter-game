@@ -1,14 +1,18 @@
 import Phaser from 'phaser';
 
 export default class Projectile {
-  constructor(scene, x, y, angle) {
+  constructor(scene, x, y, angle, range = 700) {
     this.scene = scene;
     this.speed = 500;
+    this.originX = x;
+    this.originY = y;
+    this.range = range;
 
     Projectile.ensureTexture(scene);
 
     this.sprite = scene.physics.add.sprite(x, y, 'bulletTexture');
     this.sprite.setDisplaySize(14, 4);
+    this.sprite.projectileInstance = this;
 
     scene.projectiles.add(this.sprite);
 

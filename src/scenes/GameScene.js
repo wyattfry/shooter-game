@@ -264,12 +264,15 @@ export default class GameScene extends Phaser.Scene {
       fill: '#aaaaaa'
     }).setScrollFactor(0);
 
+    this.gameOverBackdrop = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.55)
+      .setScrollFactor(0).setDepth(2900).setVisible(false);
+
     this.gameOverText = this.add.text(400, 300, '', {
       fontSize: '48px',
       fill: '#ff0000',
       align: 'center',
       setOrigin: 0.5
-    }).setScrollFactor(0);
+    }).setScrollFactor(0).setDepth(3000);
 
     if (this.multiplayer) {
       this.spectateText = this.add.text(400, 16, '', {
@@ -278,16 +281,16 @@ export default class GameScene extends Phaser.Scene {
         align: 'center',
         backgroundColor: '#000000aa',
         padding: { x: 8, y: 4 }
-      }).setOrigin(0.5, 0).setScrollFactor(0).setVisible(false);
+      }).setOrigin(0.5, 0).setScrollFactor(0).setVisible(false).setDepth(3000);
 
       this.leaveSessionText = this.add.text(400, 50, 'Leave session', {
         fontSize: '16px',
         fill: '#ff8888'
-      }).setOrigin(0.5, 0).setScrollFactor(0).setVisible(false)
+      }).setOrigin(0.5, 0).setScrollFactor(0).setVisible(false).setDepth(3000)
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => this.leaveSession());
 
-      this.gameOverButtons = this.add.container(400, 380).setScrollFactor(0).setVisible(false);
+      this.gameOverButtons = this.add.container(400, 380).setScrollFactor(0).setVisible(false).setDepth(3000);
       const newGameLabel = this.isHost ? 'New Game' : 'New Game (host only)';
       const newGameText = this.makeMenuButton(-100, 0, newGameLabel, this.isHost ? '#66ccff' : '#555577', () => this.requestNewGame());
       const endSessionText = this.makeMenuButton(100, 0, 'End Session', '#ff8888', () => this.leaveSession());
@@ -297,7 +300,7 @@ export default class GameScene extends Phaser.Scene {
         fontSize: '14px',
         fill: '#aaaaaa',
         align: 'center'
-      }).setOrigin(0.5).setScrollFactor(0).setVisible(false);
+      }).setOrigin(0.5).setScrollFactor(0).setVisible(false).setDepth(3000);
 
       this.roomCodeText = this.add.text(this.scale.width - 16, 50, `Room: ${this.net?.roomCode || ''}`, {
         fontSize: '16px',
@@ -907,6 +910,7 @@ export default class GameScene extends Phaser.Scene {
     const totalCoins = this.enemiesKilled + bonusCoins;
     addCoins(bonusCoins);
 
+    this.gameOverBackdrop.setVisible(true);
     this.gameOverText.setText(`GAME OVER\nScore: ${this.score}\nWave: ${this.wave}\nCoins earned: ${totalCoins}`);
     this.gameOverText.setOrigin(0.5, 0.5);
     this.physics.pause();
@@ -992,6 +996,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.spectateText.setVisible(false);
     this.leaveSessionText.setVisible(false);
+    this.gameOverBackdrop.setVisible(true);
     this.gameOverText.setText(`GAME OVER\nWave: ${wave}\nAll players down`);
     this.gameOverText.setOrigin(0.5, 0.5);
     this.gameOverButtons.setVisible(true);
@@ -1071,6 +1076,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.gameOver) return;
       this.gameOver = true;
       this.physics.pause();
+      this.gameOverBackdrop.setVisible(true);
       this.gameOverText.setText('HOST LEFT\nReturning to menu...');
       this.gameOverText.setOrigin(0.5, 0.5);
       this.time.delayedCall(2000, () => this.scene.start('MenuScene'));

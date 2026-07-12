@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { playShoot } from '../sound/SoundManager.js';
 
 export default class Enemy {
   // visualOnly: driven by host enemy-state broadcasts on non-host multiplayer
@@ -661,6 +662,8 @@ export default class Enemy {
 
       this.registerBulletCollision(bullet);
     }
+
+    playShoot(this.scene, { volume: 0.12 });
   }
 
   registerBulletCollision(bullet) {

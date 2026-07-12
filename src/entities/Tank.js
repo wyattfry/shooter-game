@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { playShoot, playExplosion } from '../sound/SoundManager.js';
 
 export default class Tank {
   constructor(scene, x, y) {
@@ -525,6 +526,7 @@ export default class Tank {
     this.scene.projectiles.add(shell);
 
     shell.body.setVelocity(Math.cos(angle) * 500, Math.sin(angle) * 500);
+    playExplosion(this.scene, { volume: 0.25 });
   }
 
   shootMachineGun() {
@@ -558,6 +560,7 @@ export default class Tank {
     this.scene.turretBullets.add(bullet);
 
     bullet.body.setVelocity(Math.cos(fireAngle) * 550, Math.sin(fireAngle) * 550);
+    playShoot(this.scene, { volume: 0.2 });
 
     this.scene.time.delayedCall(1500, () => {
       if (bullet.active) bullet.destroy();

@@ -13,6 +13,7 @@ import Grenade from '../entities/Grenade.js';
 import { addCoins, getPlayerName } from '../progress.js';
 import CoinCounter from '../ui/CoinCounter.js';
 import RemotePlayer from '../entities/RemotePlayer.js';
+import { preloadSounds, playExplosion, playHurt, playLose } from '../sound/SoundManager.js';
 
 const WORLD_WIDTH = 6400;
 const WORLD_HEIGHT = 4800;
@@ -29,6 +30,10 @@ export default class GameScene extends Phaser.Scene {
     this.multiplayer = !!(data && data.multiplayer);
     this.net = this.multiplayer ? this.registry.get('multiplayerNetwork') : null;
     this.isHost = this.net ? this.net.isHost : true;
+  }
+
+  preload() {
+    preloadSounds(this);
   }
 
   create() {
@@ -792,6 +797,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.player.takeDamage(amount);
     this.createExplosion(this.player.sprite.x, this.player.sprite.y);
+    playHurt(this);
 
     if (this.player.health <= 0) {
       if (this.multiplayer) {
@@ -861,6 +867,7 @@ export default class GameScene extends Phaser.Scene {
       emitting: false
     });
     emitter.explode(10);
+    playExplosion(this);
 
     this.time.delayedCall(500, () => emitter.destroy());
   }
@@ -878,6 +885,7 @@ export default class GameScene extends Phaser.Scene {
     this.gameOverText.setText(`GAME OVER\nScore: ${this.score}\nWave: ${this.wave}\nCoins earned: ${totalCoins}`);
     this.gameOverText.setOrigin(0.5, 0.5);
     this.physics.pause();
+    playLose(this);
 
     this.time.delayedCall(3000, () => {
       this.scene.start('MenuScene');
@@ -963,6 +971,7 @@ export default class GameScene extends Phaser.Scene {
     this.gameOverText.setOrigin(0.5, 0.5);
     this.gameOverButtons.setVisible(true);
     this.gameOverHint.setVisible(false);
+    playLose(this);
   }
 
   requestNewGame() {

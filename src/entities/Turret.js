@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { playShoot } from '../sound/SoundManager.js';
 
 export default class Turret {
   constructor(scene, x, y) {
@@ -268,6 +269,7 @@ export default class Turret {
     this.scene.turretBullets.add(bullet);
 
     bullet.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+    playShoot(this.scene, { volume: 0.1 });
 
     this.scene.time.delayedCall(3000, () => {
       if (bullet.active) bullet.destroy();

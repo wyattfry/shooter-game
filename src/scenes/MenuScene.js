@@ -6,6 +6,7 @@ import {
 } from '../progress.js';
 import CoinCounter from '../ui/CoinCounter.js';
 import NetworkManager from '../net/NetworkManager.js';
+import { preloadSounds, playSelect, playError, playCoin } from '../sound/SoundManager.js';
 
 const LOADOUT_KEYS = [
   'm4a1', 'saw', 'm4-upgrade', 'rocket',
@@ -59,6 +60,10 @@ const CARDS_PER_PAGE = CARDS_PER_ROW * ROWS_PER_PAGE;
 export default class MenuScene extends Phaser.Scene {
   constructor() {
     super({ key: 'MenuScene' });
+  }
+
+  preload() {
+    preloadSounds(this);
   }
 
   create() {
@@ -350,6 +355,7 @@ export default class MenuScene extends Phaser.Scene {
         this.mpConnecting = false;
         this.mpStatusText.setFill('#ff6666');
         this.mpStatusText.setText(err.message || 'Connection failed — is the server running?');
+        playError(this);
       });
   }
 
@@ -468,6 +474,9 @@ export default class MenuScene extends Phaser.Scene {
     if (spendCoins(cost)) {
       unlockWeapon(key);
       this.registry.set('startWeapon', key);
+      playCoin(this);
+    } else {
+      playError(this);
     }
     this.refreshWeaponSelection();
   }
@@ -514,7 +523,10 @@ export default class MenuScene extends Phaser.Scene {
 
     text.on('pointerover', () => text.setScale(1.1));
     text.on('pointerout', () => text.setScale(1));
-    text.on('pointerdown', onClick);
+    text.on('pointerdown', () => {
+      playSelect(this);
+      onClick();
+    });
 
     return text;
   }

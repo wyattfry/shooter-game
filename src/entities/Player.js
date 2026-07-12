@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import Projectile from './Projectile.js';
 import RocketProjectile from './RocketProjectile.js';
+import { playShoot } from '../sound/SoundManager.js';
 
 export default class Player {
   // magSize/maxMags are [min, max] ranges: each weapon rolls a random
@@ -823,6 +824,8 @@ export default class Player {
       const fireAngle = angle + (Math.random() - 0.5) * autoSpread;
       new Projectile(this.scene, x, y, fireAngle);
     }
+
+    playShoot(this.scene);
 
     if (this.magAmmo !== Infinity) {
       this.magAmmo--;
